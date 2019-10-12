@@ -1,0 +1,15 @@
+[project]
+title = DefGraph
+
+[library]
+include_dirs = defgraph
+
+[input]
+game_binding = /example/main.input_bindingc
+
+[bootstrap]
+main_collection = /example/main.collectionc
+
+[script]
+shared_state = 1
+

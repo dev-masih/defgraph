@@ -1,0 +1,76 @@
+-- require defgraph
+local defgraph = require("defgraph.defgraph")
+
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    
+    -- change debug properties
+    defgraph.debug_set_properties(vmath.vector4(1, 0, 1, 1), vmath.vector4(0, 1, 0, 1), 5)
+
+    -- defining graph nodes of the map
+    node01 = defgraph.map_add_node(vmath.vector3(100, 550, 0))
+    node02 = defgraph.map_add_node(vmath.vector3(710, 550, 0))
+    node03 = defgraph.map_add_node(vmath.vector3(100, 270, 0))
+    node04 = defgraph.map_add_node(vmath.vector3(100, 100, 0))
+    node05 = defgraph.map_add_node(vmath.vector3(275, 270, 0))
+    node06 = defgraph.map_add_node(vmath.vector3(275, 455, 0))
+    node07 = defgraph.map_add_node(vmath.vector3(405, 360, 0))
+    node08 = defgraph.map_add_node(vmath.vector3(538, 360, 0))
+    node09 = defgraph.map_add_node(vmath.vector3(580, 455, 0))
+    node10 = defgraph.map_add_node(vmath.vector3(800, 550, 0))
+    node11 = defgraph.map_add_node(vmath.vector3(450, 100, 0))
+    node12 = defgraph.map_add_node(vmath.vector3(450, 160, 0))
+    node13 = defgraph.map_add_node(vmath.vector3(625, 100, 0))
+    node14 = defgraph.map_add_node(vmath.vector3(800, 100, 0))
+    node15 = defgraph.map_add_node(vmath.vector3(800, 160, 0))
+    node16 = defgraph.map_add_node(vmath.vector3(625, 160, 0))
+    node17 = defgraph.map_add_node(vmath.vector3(538, 160, 0))
+    node18 = defgraph.map_add_node(vmath.vector3(538, 215, 0))
+    node19 = defgraph.map_add_node(vmath.vector3(625, 215, 0))
+    node20 = defgraph.map_add_node(vmath.vector3(625, 270, 0))
+    node21 = defgraph.map_add_node(vmath.vector3(800, 270, 0))
+
+    -- defining routes between nodes
+    defgraph.map_add_route(node01, node02)
+    defgraph.map_add_route(node01, node03)
+    defgraph.map_add_route(node03, node04)
+    defgraph.map_add_route(node03, node05)
+    defgraph.map_add_route(node05, node06)
+    defgraph.map_add_route(node06, node09)
+    defgraph.map_add_route(node07, node08)
+    defgraph.map_add_route(node09, node20)
+    defgraph.map_add_route(node05, node12)
+    defgraph.map_add_route(node04, node10)
+    defgraph.map_add_route(node04, node11)
+    defgraph.map_add_route(node11, node12)
+    defgraph.map_add_route(node12, node17)
+    defgraph.map_add_route(node11, node13)
+    defgraph.map_add_route(node13, node16)
+    defgraph.map_add_route(node13, node14)
+    defgraph.map_add_route(node14, node15)
+    defgraph.map_add_route(node17, node16)
+    defgraph.map_add_route(node16, node15)
+    defgraph.map_add_route(node17, node18)
+    defgraph.map_add_route(node16, node19)
+    defgraph.map_add_route(node18, node19)
+    defgraph.map_add_route(node15, node21)
+    defgraph.map_add_route(node19, node20)
+    defgraph.map_add_route(node20, node21)
+    defgraph.map_add_route(node21, node10)
+end
+
+function on_input(self, action_id, action)
+    if action_id == hash("mouse_click") and action.pressed then
+        factory.create("#factory", vmath.vector3(action.x, action.y, 0), nil, nil, 0.3)
+    end
+    if action_id == hash("right_click") and action.pressed then
+        defgraph.map_add_route(node08, node18)
+        defgraph.map_remove_route(node05, node06)
+    end
+end
+
+function update(self, dt)
+    -- draw debug info of nodes and routes
+    defgraph.debug_draw_map_nodes(true)
+    defgraph.debug_draw_map_routes()
+end
