@@ -40,9 +40,31 @@ function M.map_update_node_position(node_id, position)
     if map_node_list[node_id] ~= nil then
         map_node_list[node_id].position = position
     end
-
-    -- TODO: Update connected route line algorithms
-
+    for to_id, route in pairs(map_route_list[node_id]) do
+        -- line equation: ax + by + c = 0
+        local a, b, c
+        local from_pos = map_node_list[node_id].position
+        local to_pos = map_node_list[to_id].position
+        if from_pos.x ~= to_pos.x then
+            --non vertical
+            a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
+            b = 1
+            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
+        else
+            --vertical
+            a = 1
+            b = 0
+            c = -from_pos.x
+        end
+        map_route_list[node_id][to_id] = {
+            a = a,
+            b = b,
+            c = c,
+            distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
+        }
+        map_route_list[to_id][node_id] = map_route_list[node_id][to_id]
+    end
+    map_change_iterator = map_change_iterator + 1
 end
 
 -- global: set debug drawing properties
