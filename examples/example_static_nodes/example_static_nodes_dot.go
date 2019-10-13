@@ -1,6 +1,6 @@
 components {
-  id: "runner"
-  component: "/example/runner.script"
+  id: "dot"
+  component: "/examples/example_static_nodes/example_static_nodes_dot.script"
   position {
     x: 0.0
     y: 0.0
@@ -16,7 +16,7 @@ components {
 embedded_components {
   id: "sprite"
   type: "sprite"
-  data: "tile_set: \"/example/example.tilesource\"\n"
+  data: "tile_set: \"/examples/assets/tiles.tilesource\"\n"
   "default_animation: \"anim\"\n"
   "material: \"/builtins/materials/sprite.material\"\n"
   "blend_mode: BLEND_MODE_ALPHA\n"

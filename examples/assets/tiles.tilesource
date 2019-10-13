@@ -1,4 +1,4 @@
-image: "/example/example.png"
+image: "/examples/raw/dot.png"
 tile_width: 25
 tile_height: 25
 tile_margin: 0
