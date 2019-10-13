@@ -34,6 +34,14 @@ local pow = math.pow
 local abs = math.abs
 local huge = math.huge
 
+-- global: update node position
+-- arguments: node_id as number, position as vecotr3
+function M.map_update_node_position(node_id, position)
+    if map_node_list[node_id] ~= nil then
+        map_node_list[node_id].position = position
+    end
+end
+
 -- global: set debug drawing properties
 -- arguments: node_color as vector4, route_color as vector4, draw_scale as number
 function M.debug_set_properties(node_color, route_color, draw_scale)
