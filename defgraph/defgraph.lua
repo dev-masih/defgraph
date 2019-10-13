@@ -1,7 +1,7 @@
 -- DefGraph
--- This module contains functions to create a world map as a shape of a graph
--- and the ability to manipulate it at any time, easily see debug draw of This
--- graph and move go's inside of this graph with utilizing auto pathfilder.
+-- This module contains functions to create a world map as a shape of a graph and the ability
+-- to manipulate it at any time, easily see debug drawing of this graph and move go's inside
+-- of this graph with utilizing auto pathfinder.
 
 local M = {}
 
@@ -35,6 +35,7 @@ local abs = math.abs
 local huge = math.huge
 
 -- global: set debug drawing properties
+-- arguments: node_color as vector4, route_color as vector4, draw_scale as number
 function M.debug_set_properties(node_color, route_color, draw_scale)
     debug_node_color = node_color
     debug_route_color = route_color
@@ -106,7 +107,8 @@ local function map_remove_oneway_route(source_id, destination_id)
 end
 
 -- global: Adding a node at the given position (position.z will get ignored)
--- return: Added node id
+-- arguments: position as vector3
+-- return: Newly added node id as number
 function M.map_add_node(position)
     map_node_id_iterator = map_node_id_iterator + 1
     local node_id = map_node_id_iterator
@@ -115,7 +117,8 @@ function M.map_add_node(position)
     return node_id
 end
 
--- global: Adding a two way route between nodes with id of source_id and destination_id
+-- global: Adding a two-way route between nodes with ids of source_id and destination_id
+-- arguments: source_id as number, destination_id as number
 function M.map_add_route(source_id, destination_id)
     if map_node_list[source_id] == nil 
     or map_node_list[destination_id] == nil
@@ -129,7 +132,8 @@ function M.map_add_route(source_id, destination_id)
     map_change_iterator = map_change_iterator + 1
 end
 
--- global: Removing an existing route between nodes with id of source_id and destination_id
+-- global: Removing an existing route between nodes with ids of source_id and destination_id
+-- arguments: source_id as number, destination_id as number
 function M.map_remove_route(source_id, destination_id)
     if map_node_list[source_id] == nil
     or map_node_list[destination_id] == nil
@@ -145,6 +149,7 @@ end
 
 
 -- global: debug draw all map nodes and choose to show node ids or not
+-- arguments: is_show_ids as boolean
 function M.debug_draw_map_nodes(is_show_ids)
     for node_id, node in pairs(map_node_list) do
         if is_show_ids then
@@ -184,6 +189,7 @@ function M.debug_draw_map_routes()
 end
 
 -- global: debug draw player specific movement_data with given color
+-- arguments: movement_data as table, color as vector4
 function M.debug_draw_player_move(movement_data, color)
     if movement_data.path_index ~= 0 then
         for index = movement_data.path_index, #movement_data.path do
@@ -415,88 +421,9 @@ local function fetch_path(change_number, from_id, to_id)
     return pathfinder_cache[from_id][to_id]
 end
 
--- local: rethink moves from source_position to destination_position and use last calculated movement data
--- return: new movement data table
-local function rethink_move(source_position, destination_position, move_data)
-    local new_move_data = {}
-    new_move_data.change_number = move_data.change_number
-    new_move_data.threshold = move_data.threshold
-    new_move_data.last_position = destination_position
-    new_move_data.near_result = move_data.near_result
-    new_move_data.destination_id = move_data.destination_id
-    
-    if distance(source_position, move_data.near_result.position) <= move_data.threshold
-    and distance(source_position, map_node_list[move_data.near_result.from_id].position) > move_data.threshold
-    and distance(source_position, map_node_list[move_data.near_result.to_id].position) > move_data.threshold then
-        -- i'm on a route
-        if move_data.near_result.from_id == move_data.destination_id or move_data.near_result.to_id == move_data.destination_id then
-            -- i'm on same route as destination
-            new_move_data.next_position = destination_position
-            return new_move_data
-        else
-            -- i'm not on same route as destination
-
-            local _, _, from_distance = fetch_pathfinder(move_data.change_number, move_data.near_result.from_id, move_data.destination_id)
-
-            if from_distance == nil then
-                new_move_data.next_position = source_position
-                return new_move_data
-            end
-            
-            local _, _, to_distance = fetch_pathfinder(move_data.change_number, move_data.near_result.to_id, move_data.destination_id)
-            
-            from_distance = from_distance + distance(source_position, map_node_list[move_data.near_result.from_id].position)
-            to_distance = to_distance + distance(source_position, map_node_list[move_data.near_result.to_id].position)
-
-            if from_distance <= to_distance then
-                new_move_data.next_position = map_node_list[move_data.near_result.from_id].position
-            else
-                new_move_data.next_position = map_node_list[move_data.near_result.to_id].position
-            end
-            
-            return new_move_data
-        end
-    else
-        if distance(source_position, map_node_list[move_data.near_result.from_id].position) <= move_data.threshold then
-            -- i'm on corner (near from_id)
-            local from_path_1, from_path_2 = fetch_pathfinder(move_data.change_number, move_data.near_result.from_id, move_data.destination_id)
-
-            if from_path_1 == nil then
-                new_move_data.next_position = source_position
-                return new_move_data
-            end
-            
-            new_move_data.next_position = map_node_list[from_path_1].position            
-            new_move_data.near_result.position = source_position
-            new_move_data.near_result.distance = 0
-            new_move_data.near_result.from_id = from_path_1
-            new_move_data.near_result.to_id = from_path_2
-
-        elseif distance(source_position, map_node_list[move_data.near_result.to_id].position) <= move_data.threshold then
-            -- i'm on corner (near to_id)
-            local to_path_1, to_path_2 = fetch_pathfinder(move_data.change_number, move_data.near_result.to_id, move_data.destination_id)
-
-            if to_path_1 == nil then
-                new_move_data.next_position = source_position
-                return new_move_data
-            end
-            
-            new_move_data.next_position = map_node_list[to_path_1].position
-            new_move_data.near_result.position = source_position
-            new_move_data.near_result.distance = 0
-            new_move_data.near_result.from_id = to_path_1
-            new_move_data.near_result.to_id = to_path_2
-
-        else
-            -- i'm not on a route
-            new_move_data.next_position = move_data.near_result.position
-        end
-        return new_move_data
-    end
-end
-
--- global: initialize moves from source_position to node with id of destination_id inside map
--- return: movement data table
+-- global: initialize moves from source_position to a node with an id of destination_id inside the created map
+-- arguments: source_position as vector3, destination_id as number
+-- return: special movement data as table
 function M.move_initialize(source_position, destination_id)
     local near_result = calculate_to_nearest_route(source_position)
     if near_result == nil then
@@ -540,9 +467,9 @@ function M.move_initialize(source_position, destination_id)
     end
 end
 
--- global: calculate movements from current_position inside given map considering given
---         speed and threshold useing last calculated movement data
--- return: new position for movement, new movement data table
+-- global: calculate movements from current_position of the game object inside the created map considering given speedand threshold, using last calculated movement data
+-- arguments: current_position as vector3, speed as number, threshold as number, move_data as table
+-- return: new position for movement as vector3, new movement data as table, is reached to destination as boolean
 function M.move_player(current_position, speed, threshold, move_data)
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
