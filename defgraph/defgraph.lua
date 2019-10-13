@@ -492,7 +492,7 @@ function M.move_player(current_position, speed, threshold, move_data)
     end
 
     -- check for reaching path section
-    if distance(current_position, move_data.path[move_data.path_index]) <= threshold then
+    if distance(current_position, move_data.path[move_data.path_index]) <= threshold + 1 then
         if move_data.path_index == #move_data.path then
             -- reached destination
             return move_data, {
