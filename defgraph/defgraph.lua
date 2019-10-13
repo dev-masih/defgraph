@@ -40,6 +40,9 @@ function M.map_update_node_position(node_id, position)
     if map_node_list[node_id] ~= nil then
         map_node_list[node_id].position = position
     end
+
+    -- TODO: Update connected route line algorithms
+
 end
 
 -- global: set debug drawing properties
