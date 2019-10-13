@@ -14,7 +14,7 @@ end
 function update(self, dt)
 	-- move go inside given map and update move_data
 	local my_position = go.get_position()
-	self.next_position, self.movement_data, self.is_reached = defgraph.move_player(my_position, self.speed * dt, self.movement_data)
+	self.next_position, self.movement_data, self.is_reached = defgraph.move_player(my_position, self.speed * dt, 1, self.movement_data)
 
 	-- update go postion based of returned position
 	go.set_position(self.next_position)

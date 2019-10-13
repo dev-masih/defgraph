@@ -185,9 +185,12 @@ end
 
 -- global: debug draw player specific movement_data with given color
 function M.debug_draw_player_move(movement_data, color)
-    local next_position = movement_data.next_position
-    msg.post("@render:", "draw_line", { start_point = next_position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = next_position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = color } )
-    msg.post("@render:", "draw_line", { start_point = next_position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = next_position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = color } )
+    if movement_data.path_index ~= 0 then
+        for index = movement_data.path_index, #movement_data.path do
+            msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
+            msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+        end
+    end
 end
 
 
@@ -497,6 +500,7 @@ function M.move_initialize(source_position, destination_id)
         -- stay until something changes
         return {
             change_number = map_change_iterator,
+            destination_id = destination_id,
             path_index = 0,
             path = {}
         }
@@ -524,6 +528,7 @@ function M.move_initialize(source_position, destination_id)
 
         return {
             change_number = map_change_iterator,
+            destination_id = destination_id,
             path_index = 1,
             path = position_list
         }
@@ -531,34 +536,30 @@ function M.move_initialize(source_position, destination_id)
 end
 
 -- global: calculate movements from current_position inside given map considering given
---         speed and dt useing last calculated movement data
+--         speed and threshold useing last calculated movement data
 -- return: new position for movement, new movement data table
-function M.move_player(current_position, speed, move_data)
+function M.move_player(current_position, speed, threshold, move_data)
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
-        move_data = M.move_initialize(current_position, move_data.threshold, move_data.destination_id)
+        move_data = M.move_initialize(current_position, move_data.destination_id)
     end
 
-    -- check for reaching destination
-    if distance(move_data.last_position, current_position) >= move_data.threshold then
-
-        -- check for reaching next position
-        local direction_vector = move_data.next_position - current_position
-        if distance(move_data.next_position, current_position) >= move_data.threshold then
-            direction_vector.z = 0
-            direction_vector = vmath.normalize(direction_vector)
-            return (current_position +  direction_vector * speed), move_data, false
+    -- check for reaching path section
+    if distance(current_position, move_data.path[move_data.path_index]) <= threshold then
+        if move_data.path_index == #move_data.path then
+            -- reached destination
+            return current_position, move_data, true    --TODO: change return model
         else
-            -- I reached next_position, now rethink next position
-            if move_data.near_result == nil then
-                return current_position, move_data, false
-            else
-                return current_position, rethink_move(current_position, move_data.last_position, move_data), false
-            end
+            -- go for next section
+            move_data.path_index = move_data.path_index + 1
         end
     end
-    
-    return current_position, move_data, true
+
+    -- movement calculation
+    local direction_vector = move_data.path[move_data.path_index] - current_position
+    direction_vector.z = 0
+    direction_vector = vmath.normalize(direction_vector)
+    return (current_position +  direction_vector * speed), move_data, false
 end
 
 return M
