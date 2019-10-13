@@ -22,6 +22,7 @@ function update(self, dt)
 	-- you can check if go reached to the destination
 	if self.move_result.is_reached then
 		print("I'm at destination!")
+		go.delete()
 	end
 	
 	-- debug draw movement_data with specific color
