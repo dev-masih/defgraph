@@ -1,17 +1,17 @@
 -- DefGraph
--- This module contains functions to create a world map as a shape of a graph
--- and the ability to manipulate it at any time, easily see debug draw of This
--- graph and move go's inside of this graph with utilizing auto pathfilder.
+-- This module contains functions to create a world map as a shape of a graph and the ability
+-- to manipulate it at any time, easily see debug drawing of this graph and move go's inside
+-- of this graph with utilizing auto pathfinder.
 
 local M = {}
 
 local map_node_list = {}
 -- map_node_list[node_id] = { position, type }
 local map_route_list = {}
--- map_route_list[from_id] = { to_id, a, b, c, distance }
+-- map_route_list[from_id][to_id] = { a, b, c, distance }
 
 local pathfinder_cache = {}
--- pathfinder_cache[from_id][to_id] = { change_number, distance, next_node_1_id, next_node_2_id }
+-- pathfinder_cache[from_id][to_id] = { change_number, distance, path:{} }
 
 local map_node_id_iterator = 0
 local map_change_iterator = 0
@@ -35,10 +35,20 @@ local abs = math.abs
 local huge = math.huge
 
 -- global: set debug drawing properties
+-- arguments: node_color as vector4, route_color as vector4, draw_scale as number
 function M.debug_set_properties(node_color, route_color, draw_scale)
     debug_node_color = node_color
     debug_route_color = route_color
     debug_draw_scale = 5
+end
+
+-- local: count size of non-sequences table
+local function table_size(table)
+    local count = 0
+    for _ in pairs(table) do
+        count = count + 1
+    end
+    return count
 end
 
 -- local: Add one way route from node source_id to node destination_id
@@ -47,15 +57,7 @@ local function map_add_oneway_route(source_id, destination_id)
         map_route_list[source_id] = {}
     end
 
-    local is_route_exists = false
-    for i = 1, #map_route_list[source_id] do
-        if map_route_list[source_id][i].to_id == destination_id then 
-            is_route_exists = true
-            break
-        end
-    end
-
-    if is_route_exists == false then
+    if map_route_list[source_id][destination_id] == nil then
         -- line equation: ax + by + c = 0
         local a, b, c
         local from_pos = map_node_list[source_id].position
@@ -71,24 +73,24 @@ local function map_add_oneway_route(source_id, destination_id)
             b = 0
             c = -from_pos.x
         end
-        table.insert(map_route_list[source_id], {
-            to_id = destination_id,
+        map_route_list[source_id][destination_id] = {
             a = a,
             b = b,
             c = c,
             distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
-        })
+        }
     end
 end
 
 -- local: update node type parameter
 local function map_update_node_type(node_id)
     if map_route_list[node_id] ~= nil then
-        if #map_route_list[node_id] == nil then
+        local size = table_size(map_route_list[node_id])
+        if size == 0 then
             map_node_list[node_id].type = NODETYPE.single
-        elseif #map_route_list[node_id] == 1 then
+        elseif size == 1 then
             map_node_list[node_id].type = NODETYPE.deadend
-        elseif #map_route_list[node_id] > 1 then
+        elseif size > 1 then
             map_node_list[node_id].type = NODETYPE.intersection
         end
     end
@@ -97,20 +99,16 @@ end
 -- local: remove an existing route between source_id and destination_id nodes
 local function map_remove_oneway_route(source_id, destination_id)
     if map_route_list[source_id] ~= nil then
-        for i = 1, #map_route_list[source_id] do
-            if map_route_list[source_id][i].to_id == destination_id then
-                table.remove(map_route_list[source_id], i)
-                if #map_route_list[source_id] == 0 then
-                    map_route_list[source_id] = nil
-                end
-                break
-            end
+        map_route_list[source_id][destination_id] = nil
+        if table_size(map_route_list[source_id]) == 0 then
+            map_route_list[source_id] = nil
         end
     end
 end
 
 -- global: Adding a node at the given position (position.z will get ignored)
--- return: Added node id
+-- arguments: position as vector3
+-- return: Newly added node id as number
 function M.map_add_node(position)
     map_node_id_iterator = map_node_id_iterator + 1
     local node_id = map_node_id_iterator
@@ -119,7 +117,8 @@ function M.map_add_node(position)
     return node_id
 end
 
--- global: Adding a two way route between nodes with id of source_id and destination_id
+-- global: Adding a two-way route between nodes with ids of source_id and destination_id
+-- arguments: source_id as number, destination_id as number
 function M.map_add_route(source_id, destination_id)
     if map_node_list[source_id] == nil 
     or map_node_list[destination_id] == nil
@@ -133,7 +132,8 @@ function M.map_add_route(source_id, destination_id)
     map_change_iterator = map_change_iterator + 1
 end
 
--- global: Removing an existing route between nodes with id of source_id and destination_id
+-- global: Removing an existing route between nodes with ids of source_id and destination_id
+-- arguments: source_id as number, destination_id as number
 function M.map_remove_route(source_id, destination_id)
     if map_node_list[source_id] == nil
     or map_node_list[destination_id] == nil
@@ -149,6 +149,7 @@ end
 
 
 -- global: debug draw all map nodes and choose to show node ids or not
+-- arguments: is_show_ids as boolean
 function M.debug_draw_map_nodes(is_show_ids)
     for node_id, node in pairs(map_node_list) do
         if is_show_ids then
@@ -179,19 +180,26 @@ end
 -- global: debug draw all map routes
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
-        for route_index = 1, #routes do
-            if from_id < routes[route_index].to_id then
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[routes[route_index].to_id].position, color = debug_route_color } )
+        for to_id, route in pairs(routes) do
+            if from_id < to_id then
+                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_route_color } )
             end
         end
     end
 end
 
 -- global: debug draw player specific movement_data with given color
+-- arguments: movement_data as table, color as vector4
 function M.debug_draw_player_move(movement_data, color)
-    local next_position = movement_data.next_position
-    msg.post("@render:", "draw_line", { start_point = next_position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = next_position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = color } )
-    msg.post("@render:", "draw_line", { start_point = next_position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = next_position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = color } )
+    if movement_data.path_index ~= 0 then
+        for index = movement_data.path_index, #movement_data.path do
+            if index ~= #movement_data.path then
+                msg.post("@render:", "draw_line", { start_point = movement_data.path[index], end_point = movement_data.path[index + 1], color = color } )
+            end
+            msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
+            msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+        end
+    end
 end
 
 
@@ -199,6 +207,15 @@ end
 local function distance(source, destination)
     return sqrt(pow(source.x - destination.x, 2) + pow(source.y - destination.y, 2))
 end
+
+-- local: shallow copy a table
+local function shallow_copy(table)
+    local new_table = {}
+    for key, value in pairs(table) do
+        new_table[key] = value
+    end
+    return new_table
+  end
 
 -- local: calculate neareset position on nearest route on map to given position
 -- return: table include vecotr3 for position on a nearest route, distance to that position and node ids for that nearest route
@@ -208,13 +225,12 @@ local function calculate_to_nearest_route(position)
     local min_dist = huge
 
     for from_id, routes in pairs(map_route_list) do
-        for route_index = 1, #routes do
-            local route = routes[route_index]
-            if from_id < route.to_id then
+        for to_id, route in pairs(routes) do
+            if from_id < to_id then
                 
                 local is_between, near_pos_x, near_pos_y, dist, dist_from_id, dist_to_id
                 local from_pos = map_node_list[from_id].position
-                local to_pos = map_node_list[route.to_id].position
+                local to_pos = map_node_list[to_id].position
 
                 -- calculate nearest position for every route to it's line equation
                 if from_pos.x ~= to_pos.x then
@@ -273,7 +289,7 @@ local function calculate_to_nearest_route(position)
                         end
                     end
                     min_from_id = from_id
-                    min_to_id = route.to_id
+                    min_to_id = to_id
                 end
                 
             end
@@ -284,17 +300,17 @@ local function calculate_to_nearest_route(position)
         return nil
     else
         return {
-            position = vmath.vector3(min_near_pos_x, min_near_pos_y, 0),
+            position_on_route = vmath.vector3(min_near_pos_x, min_near_pos_y, 0),
             distance = min_dist,
-            from_id = min_from_id,
-            to_id = min_to_id
+            route_from_id = min_from_id,
+            route_to_id = min_to_id
         }
     end
 end
 
--- local: calculate graph pathfinder inside map from node id of start_id to finish_id
+-- local: calculate graph path inside map from node id of start_id to finish_id
 -- return: list of node ids, total distance of path
-local function pathfinder(start_id, finish_id)
+local function calculate_path(start_id, finish_id)
     local previous = {}
     local distances = {}
     local nodes = {}
@@ -321,20 +337,21 @@ local function pathfinder(start_id, finish_id)
             path = {}
             path_distance = 0
             while previous[smallest] ~= nil do
-                for route_index, route in pairs(map_route_list[smallest]) do
-                    if route.to_id == previous[smallest] then
-                        path_distance = path_distance + route.distance
-                        break
-                    end
-                end
+
+                table.insert(path, 1, { id = smallest, distance = path_distance })
                 
-                if smallest == nil or path_distance == nil then
+                if map_route_list[smallest] == nil then
                     return nil
                 end
 
-                table.insert(path, 1, { id = smallest, distance = path_distance })
+                if map_route_list[smallest][previous[smallest]] == nil then
+                    return nil
+                end
+
+                path_distance = path_distance + map_route_list[smallest][previous[smallest]].distance
                 smallest = previous[smallest];
             end
+            table.insert(path, 1, { id = smallest, distance = path_distance })
             break
         end
 
@@ -342,11 +359,11 @@ local function pathfinder(start_id, finish_id)
             break;
         end
 
-        for route_index, neighbor in pairs(map_route_list[smallest]) do
+        for to_id, neighbor in pairs(map_route_list[smallest]) do
             local alt = distances[smallest] + neighbor.distance
-            if alt < distances[neighbor.to_id] then
-                distances[neighbor.to_id] = alt;
-                previous[neighbor.to_id] = smallest;
+            if alt < distances[to_id] then
+                distances[to_id] = alt;
+                previous[to_id] = smallest;
             end
         end
 
@@ -355,202 +372,139 @@ local function pathfinder(start_id, finish_id)
     return path
 end
 
--- local: retrive pathfinder algorithm results from cache or update cache
--- return: two next node ids and distance to destination
-local function fetch_pathfinder(change_number, from_id, to_id)
+-- local: retrive path results from cache or update cache
+-- return: cache includes distance and path table to destination
+local function fetch_path(change_number, from_id, to_id)
 
+    -- check for same from and to id
     if from_id == to_id then
-        return from_id, from_id, 0
+        return {
+            change_number = change_number,
+            distance = 0,
+            path = {}
+        }
     end
 
-    -- retrive result from cache
+    -- check for existing cache
     if pathfinder_cache[from_id] ~= nil then
         local cache = pathfinder_cache[from_id][to_id]
         if cache ~= nil then
             if cache.change_number == change_number then
-                return cache.next_node_1_id, cache.next_node_2_id, cache.distance
+                return cache
             end
         end
     end
 
-    -- update cache if not exists or old
-    local path = pathfinder(from_id, to_id)
-
+    -- calculate path
+    local path = calculate_path(from_id, to_id)
     if path == nil then
-        return nil, nil, nil
+        return nil
     end
     
-    local distance = path[1].distance
-    local path_next_1 = path[1].id
-    local path_next_2 = path[1].id
-    if #path > 1 then
-        path_next_2 = path[2].id
-    end
+    -- update cache
+    local route = {}
+    for index = #path, 1, -1 do
+        if path[index].distance ~= 0 then
+            if pathfinder_cache[path[index].id] == nil then
+                pathfinder_cache[path[index].id] = {}
+            end
 
-    if pathfinder_cache[from_id] == nil then
-        pathfinder_cache[from_id] = {}
-    end
-
-    pathfinder_cache[from_id][to_id] = {
-        change_number = change_number,
-        distance = distance,
-        next_node_1_id = path_next_1,
-        next_node_2_id = path_next_2
-    }
-    
-    for path_index = 1, #path do
-
-        if path_index >= #path - 1 then
-            break
+            pathfinder_cache[path[index].id][to_id] = {
+                change_number = change_number,
+                distance = path[index].distance,
+                path = shallow_copy(route)
+            }
         end
-        
-        if pathfinder_cache[path[path_index].id] == nil then
-            pathfinder_cache[path[path_index].id] = {}
-        end
-
-        pathfinder_cache[path[path_index].id][to_id] = {
-            change_number = change_number,
-            distance = path[path_index + 1].distance,
-            next_node_1_id = path[path_index + 1].id,
-            next_node_2_id = path[path_index + 2].id
-        }
+        table.insert(route, 1, path[index].id)
     end
     
-    return path_next_1, path_next_2, distance
+    return pathfinder_cache[from_id][to_id]
 end
 
--- local: rethink moves from source_position to destination_position and use last calculated movement data
--- return: new movement data table
-local function rethink_move(source_position, destination_position, move_data)
-    local new_move_data = {}
-    new_move_data.change_number = move_data.change_number
-    new_move_data.threshold = move_data.threshold
-    new_move_data.last_position = destination_position
-    new_move_data.near_result = move_data.near_result
-    new_move_data.destination_id = move_data.destination_id
-    
-    if distance(source_position, move_data.near_result.position) <= move_data.threshold
-    and distance(source_position, map_node_list[move_data.near_result.from_id].position) > move_data.threshold
-    and distance(source_position, map_node_list[move_data.near_result.to_id].position) > move_data.threshold then
-        -- i'm on a route
-        if move_data.near_result.from_id == move_data.destination_id or move_data.near_result.to_id == move_data.destination_id then
-            -- i'm on same route as destination
-            new_move_data.next_position = destination_position
-            return new_move_data
-        else
-            -- i'm not on same route as destination
+-- global: initialize moves from source_position to a node with an id of destination_id inside the created map
+-- arguments: source_position as vector3, destination_id as number
+-- return: special movement data as table
+function M.move_initialize(source_position, destination_id)
+    local near_result = calculate_to_nearest_route(source_position)
+    if near_result == nil then
+        -- stay until something changes
+        return {
+            change_number = map_change_iterator,
+            destination_id = destination_id,
+            path_index = 0,
+            path = {}
+        }
+    else
+        local from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_id)
+        local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
 
-            local _, _, from_distance = fetch_pathfinder(move_data.change_number, move_data.near_result.from_id, move_data.destination_id)
-
-            if from_distance == nil then
-                new_move_data.next_position = source_position
-                return new_move_data
-            end
-            
-            local _, _, to_distance = fetch_pathfinder(move_data.change_number, move_data.near_result.to_id, move_data.destination_id)
-            
-            from_distance = from_distance + distance(source_position, map_node_list[move_data.near_result.from_id].position)
-            to_distance = to_distance + distance(source_position, map_node_list[move_data.near_result.to_id].position)
+        local position_list = {}
+        table.insert(position_list, near_result.position_on_route)
+        
+        if from_path ~= nil and to_path ~= nil then
+            local from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
+            local to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
 
             if from_distance <= to_distance then
-                new_move_data.next_position = map_node_list[move_data.near_result.from_id].position
+                table.insert(position_list, map_node_list[near_result.route_from_id].position)
+                for index = 1, #from_path.path do
+                    table.insert(position_list, map_node_list[from_path.path[index]].position)
+                end
             else
-                new_move_data.next_position = map_node_list[move_data.near_result.to_id].position
+                table.insert(position_list, map_node_list[near_result.route_to_id].position)
+                for index = 1, #to_path.path do
+                    table.insert(position_list, map_node_list[to_path.path[index]].position)
+                end
             end
-            
-            return new_move_data
         end
-    else
-        if distance(source_position, map_node_list[move_data.near_result.from_id].position) <= move_data.threshold then
-            -- i'm on corner (near from_id)
-            local from_path_1, from_path_2 = fetch_pathfinder(move_data.change_number, move_data.near_result.from_id, move_data.destination_id)
 
-            if from_path_1 == nil then
-                new_move_data.next_position = source_position
-                return new_move_data
-            end
-            
-            new_move_data.next_position = map_node_list[from_path_1].position            
-            new_move_data.near_result.position = source_position
-            new_move_data.near_result.distance = 0
-            new_move_data.near_result.from_id = from_path_1
-            new_move_data.near_result.to_id = from_path_2
-
-        elseif distance(source_position, map_node_list[move_data.near_result.to_id].position) <= move_data.threshold then
-            -- i'm on corner (near to_id)
-            local to_path_1, to_path_2 = fetch_pathfinder(move_data.change_number, move_data.near_result.to_id, move_data.destination_id)
-
-            if to_path_1 == nil then
-                new_move_data.next_position = source_position
-                return new_move_data
-            end
-            
-            new_move_data.next_position = map_node_list[to_path_1].position
-            new_move_data.near_result.position = source_position
-            new_move_data.near_result.distance = 0
-            new_move_data.near_result.from_id = to_path_1
-            new_move_data.near_result.to_id = to_path_2
-
-        else
-            -- i'm not on a route
-            new_move_data.next_position = move_data.near_result.position
-        end
-        return new_move_data
+        return {
+            change_number = map_change_iterator,
+            destination_id = destination_id,
+            path_index = 1,
+            path = position_list
+        }
     end
 end
 
--- global: initialize moves from source_position to node with id of destination_id inside
---         map with specified threshold in position calculations
--- return: movement data table
-function M.move_initialize(source_position, threshold, destination_id)
-    local destination_position = map_node_list[destination_id].position
-    local near_result = calculate_to_nearest_route(source_position)
-
-    local first_move_data = {
-        change_number = map_change_iterator,
-        threshold = threshold,
-        next_position = source_position,
-        last_position = destination_position,
-        near_result = near_result,
-        destination_id = destination_id
-    }
-    
-    if near_result == nil then
-        return first_move_data
-    else
-        return rethink_move(source_position, destination_position, first_move_data)
-    end
-end
-
--- global: calculate movements from current_position inside given map considering given
---         speed and dt useing last calculated movement data
--- return: new position for movement, new movement data table
-function M.move_player(current_position, speed, move_data)
+-- global: calculate movements from current_position of the game object inside the created map considering given speedand threshold, using last calculated movement data
+-- arguments: current_position as vector3, speed as number, threshold as number, move_data as table
+-- return: new movement data as table, move result table like { position: next position of game object as vector3, is_reached: is game object reached the destination as boolean }
+function M.move_player(current_position, speed, threshold, move_data)
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
-        move_data = M.move_initialize(current_position, move_data.threshold, move_data.destination_id)
+        move_data = M.move_initialize(current_position, move_data.destination_id)
     end
 
-    -- check for reaching destination
-    if distance(move_data.last_position, current_position) >= move_data.threshold then
+    if move_data.path_index == 0 then
+        return move_data, { 
+            position = current_position,
+            is_reached = false
+        }
+    end
 
-        -- check for reaching next position
-        local direction_vector = move_data.next_position - current_position
-        if distance(move_data.next_position, current_position) >= move_data.threshold then
-            direction_vector.z = 0
-            direction_vector = vmath.normalize(direction_vector)
-            return (current_position +  direction_vector * speed), move_data, false
+    -- check for reaching path section
+    if distance(current_position, move_data.path[move_data.path_index]) <= threshold then
+        if move_data.path_index == #move_data.path then
+            -- reached destination
+            return move_data, {
+                position = current_position,
+                is_reached = true
+            }
         else
-            -- I reached next_position, now rethink next position
-            if move_data.near_result == nil then
-                return current_position, move_data, false
-            else
-                return current_position, rethink_move(current_position, move_data.last_position, move_data), false
-            end
+            -- go for next section
+            move_data.path_index = move_data.path_index + 1
         end
     end
-    
-    return current_position, move_data, true
+
+    -- movement calculation
+    local direction_vector = move_data.path[move_data.path_index] - current_position
+    direction_vector.z = 0
+    direction_vector = vmath.normalize(direction_vector)
+    return move_data, {
+        position = (current_position +  direction_vector * speed),
+        is_reached = false
+    }
 end
 
 return M
