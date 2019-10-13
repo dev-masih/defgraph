@@ -510,22 +510,24 @@ function M.move_initialize(source_position, destination_id)
     else
         local from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_id)
         local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
-        
-        local from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
-        local to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
 
         local position_list = {}
         table.insert(position_list, near_result.position_on_route)
+        
+        if from_path ~= nil and to_path ~= nil then
+            local from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
+            local to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
 
-        if from_distance <= to_distance then
-            table.insert(position_list, map_node_list[near_result.route_from_id].position)
-            for index = 1, #from_path.path do
-                table.insert(position_list, map_node_list[from_path.path[index]].position)
-            end
-        else
-            table.insert(position_list, map_node_list[near_result.route_to_id].position)
-            for index = 1, #to_path.path do
-                table.insert(position_list, map_node_list[to_path.path[index]].position)
+            if from_distance <= to_distance then
+                table.insert(position_list, map_node_list[near_result.route_from_id].position)
+                for index = 1, #from_path.path do
+                    table.insert(position_list, map_node_list[from_path.path[index]].position)
+                end
+            else
+                table.insert(position_list, map_node_list[near_result.route_to_id].position)
+                for index = 1, #to_path.path do
+                    table.insert(position_list, map_node_list[to_path.path[index]].position)
+                end
             end
         end
 
