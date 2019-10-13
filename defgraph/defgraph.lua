@@ -469,7 +469,7 @@ end
 
 -- global: calculate movements from current_position of the game object inside the created map considering given speedand threshold, using last calculated movement data
 -- arguments: current_position as vector3, speed as number, threshold as number, move_data as table
--- return: new position for movement as vector3, new movement data as table, is reached to destination as boolean
+-- return: new movement data as table, move result table like { position: next position of game object as vector3, is_reached: is game object reached the destination as boolean }
 function M.move_player(current_position, speed, threshold, move_data)
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
@@ -477,14 +477,20 @@ function M.move_player(current_position, speed, threshold, move_data)
     end
 
     if move_data.path_index == 0 then
-        return current_position, move_data, true
+        return move_data, { 
+            position = current_position,
+            is_reached = false
+        }
     end
 
     -- check for reaching path section
     if distance(current_position, move_data.path[move_data.path_index]) <= threshold then
         if move_data.path_index == #move_data.path then
             -- reached destination
-            return current_position, move_data, true    --TODO: change return model
+            return move_data, {
+                position = current_position,
+                is_reached = true
+            }
         else
             -- go for next section
             move_data.path_index = move_data.path_index + 1
@@ -495,7 +501,10 @@ function M.move_player(current_position, speed, threshold, move_data)
     local direction_vector = move_data.path[move_data.path_index] - current_position
     direction_vector.z = 0
     direction_vector = vmath.normalize(direction_vector)
-    return (current_position +  direction_vector * speed), move_data, false
+    return move_data, {
+        position = (current_position +  direction_vector * speed),
+        is_reached = false
+    }
 end
 
 return M
