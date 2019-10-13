@@ -284,17 +284,17 @@ local function calculate_to_nearest_route(position)
         return nil
     else
         return {
-            position = vmath.vector3(min_near_pos_x, min_near_pos_y, 0),
+            position_on_route = vmath.vector3(min_near_pos_x, min_near_pos_y, 0),
             distance = min_dist,
-            from_id = min_from_id,
-            to_id = min_to_id
+            route_from_id = min_from_id,
+            route_to_id = min_to_id
         }
     end
 end
 
 -- local: calculate graph pathfinder inside map from node id of start_id to finish_id
 -- return: list of node ids, total distance of path
-local function pathfinder(start_id, finish_id)
+function M.pathfinder(start_id, finish_id)
     local previous = {}
     local distances = {}
     local nodes = {}
@@ -321,6 +321,9 @@ local function pathfinder(start_id, finish_id)
             path = {}
             path_distance = 0
             while previous[smallest] ~= nil do
+
+                table.insert(path, 1, { id = smallest, distance = path_distance })
+                
                 for route_index, route in pairs(map_route_list[smallest]) do
                     if route.to_id == previous[smallest] then
                         path_distance = path_distance + route.distance
@@ -328,13 +331,9 @@ local function pathfinder(start_id, finish_id)
                     end
                 end
                 
-                if smallest == nil or path_distance == nil then
-                    return nil
-                end
-
-                table.insert(path, 1, { id = smallest, distance = path_distance })
                 smallest = previous[smallest];
             end
+            table.insert(path, 1, { id = smallest, distance = path_distance })
             break
         end
 

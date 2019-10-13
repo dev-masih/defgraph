@@ -57,6 +57,9 @@ function init(self)
     defgraph.map_add_route(node19, node20)
     defgraph.map_add_route(node20, node21)
     defgraph.map_add_route(node21, node10)
+
+    local path = defgraph.pathfinder(node04, node02)
+    
 end
 
 function on_input(self, action_id, action)
