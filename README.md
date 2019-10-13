@@ -1,6 +1,8 @@
-# DefGraph
+# DefGraph v2  
 
 <img src="example/banner.jpg" alt="routing gif" style="max-width:100%;" />
+
+* <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v2.md">**Changelog and migration guild from version 1 to 2**</a>  
 
 This module contains functions to create a world map as a shape of a graph and the ability to manipulate it at any time, easily see debug drawing of this graph and move go's inside of this graph with utilizing auto pathfinder.  
 
@@ -50,7 +52,7 @@ initialize moves from source_position to a node with an id of destination_id ins
 **return:** special movement data as table  
 > **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one.  
 
-### move_player(current_position, speed, move_data)  
+### move_player(current_position, speed, threshold, move_data)  
 calculate movements from current_position of the game object inside the created map considering given speed and threshold, using last calculated movement data  
 **arguments:** current_position as vector3, speed as number, threshold as number, move_data as table  
 **return:** new movement data as table, move result table like { `position`: next position of game object as vector3, `is_reached`: is game object reached the destination as boolean }  
