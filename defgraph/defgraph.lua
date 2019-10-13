@@ -361,8 +361,8 @@ local function calculate_path(start_id, finish_id)
 end
 
 -- local: retrive path results from cache or update cache
--- return: two next node ids and distance to destination
-function M.fetch_path(change_number, from_id, to_id)
+-- return: cache includes distance and path table to destination
+local function fetch_path(change_number, from_id, to_id)
 
     -- check for same from and to id
     if from_id == to_id then
@@ -489,26 +489,44 @@ local function rethink_move(source_position, destination_position, move_data)
     end
 end
 
--- global: initialize moves from source_position to node with id of destination_id inside
---         map with specified threshold in position calculations
+-- global: initialize moves from source_position to node with id of destination_id inside map
 -- return: movement data table
-function M.move_initialize(source_position, threshold, destination_id)
-    local destination_position = map_node_list[destination_id].position
+function M.move_initialize(source_position, destination_id)
     local near_result = calculate_to_nearest_route(source_position)
-
-    local first_move_data = {
-        change_number = map_change_iterator,
-        threshold = threshold,
-        next_position = source_position,
-        last_position = destination_position,
-        near_result = near_result,
-        destination_id = destination_id
-    }
-    
     if near_result == nil then
-        return first_move_data
+        -- stay until something changes
+        return {
+            change_number = map_change_iterator,
+            path_index = 0,
+            path = {}
+        }
     else
-        return rethink_move(source_position, destination_position, first_move_data)
+        local from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_id)
+        local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
+        
+        local from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
+        local to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
+
+        local position_list = {}
+        table.insert(position_list, near_result.position_on_route)
+
+        if from_distance <= to_distance then
+            table.insert(position_list, map_node_list[near_result.route_from_id].position)
+            for index = 1, #from_path.path do
+                table.insert(position_list, map_node_list[from_path.path[index]].position)
+            end
+        else
+            table.insert(position_list, map_node_list[near_result.route_to_id].position)
+            for index = 1, #to_path.path do
+                table.insert(position_list, map_node_list[to_path.path[index]].position)
+            end
+        end
+
+        return {
+            change_number = map_change_iterator,
+            path_index = 1,
+            path = position_list
+        }
     end
 end
 
