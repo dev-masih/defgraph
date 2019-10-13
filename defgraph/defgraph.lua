@@ -196,6 +196,15 @@ local function distance(source, destination)
     return sqrt(pow(source.x - destination.x, 2) + pow(source.y - destination.y, 2))
 end
 
+-- local: shallow copy a table
+local function shallow_copy(table)
+    local new_table = {}
+    for key, value in pairs(table) do
+        new_table[key] = value
+    end
+    return new_table
+  end
+
 -- local: calculate neareset position on nearest route on map to given position
 -- return: table include vecotr3 for position on a nearest route, distance to that position and node ids for that nearest route
 local function calculate_to_nearest_route(position)
@@ -355,62 +364,49 @@ end
 -- return: two next node ids and distance to destination
 function M.fetch_path(change_number, from_id, to_id)
 
-    -- TODO
-    -- if from_id == to_id then
-    --     return from_id, from_id, 0
-    -- end
-
-    -- TODO
-    -- retrive result from cache
-    -- if pathfinder_cache[from_id] ~= nil then
-    --     local cache = pathfinder_cache[from_id][to_id]
-    --     if cache ~= nil then
-    --         if cache.change_number == change_number then
-    --             return cache.next_node_1_id, cache.next_node_2_id, cache.distance
-    --         end
-    --     end
-    -- end
-
-    -- update cache if not exists or old
-    local path = calculate_path(from_id, to_id)
-    
-    local distance = path[1].distance
-    local path_next_1 = path[1].id
-    local path_next_2 = path[1].id
-    if #path > 1 then
-        path_next_2 = path[2].id
-    end
-
-    if pathfinder_cache[from_id] == nil then
-        pathfinder_cache[from_id] = {}
-    end
-
-    pathfinder_cache[from_id][to_id] = {
-        change_number = change_number,
-        distance = distance,
-        next_node_1_id = path_next_1,
-        next_node_2_id = path_next_2
-    }
-    
-    for path_index = 1, #path do
-
-        if path_index >= #path - 1 then
-            break
-        end
-        
-        if pathfinder_cache[path[path_index].id] == nil then
-            pathfinder_cache[path[path_index].id] = {}
-        end
-
-        pathfinder_cache[path[path_index].id][to_id] = {
+    -- check for same from and to id
+    if from_id == to_id then
+        return {
             change_number = change_number,
-            distance = path[path_index + 1].distance,
-            next_node_1_id = path[path_index + 1].id,
-            next_node_2_id = path[path_index + 2].id
+            distance = 0,
+            path = {}
         }
     end
+
+    -- check for existing cache
+    if pathfinder_cache[from_id] ~= nil then
+        local cache = pathfinder_cache[from_id][to_id]
+        if cache ~= nil then
+            if cache.change_number == change_number then
+                return cache
+            end
+        end
+    end
+
+    -- calculate path
+    local path = calculate_path(from_id, to_id)
+    if path == nil then
+        return nil
+    end
     
-    return path_next_1, path_next_2, distance
+    -- update cache
+    local route = {}
+    for index = #path, 1, -1 do
+        if path[index].distance ~= 0 then
+            if pathfinder_cache[path[index].id] == nil then
+                pathfinder_cache[path[index].id] = {}
+            end
+
+            pathfinder_cache[path[index].id][to_id] = {
+                change_number = change_number,
+                distance = path[index].distance,
+                path = shallow_copy(route)
+            }
+        end
+        table.insert(route, 1, path[index].id)
+    end
+    
+    return pathfinder_cache[from_id][to_id]
 end
 
 -- local: rethink moves from source_position to destination_position and use last calculated movement data
