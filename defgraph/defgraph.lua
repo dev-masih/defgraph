@@ -8,10 +8,10 @@ local M = {}
 local map_node_list = {}
 -- map_node_list[node_id] = { position, type }
 local map_route_list = {}
--- map_route_list[from_id] = { to_id, a, b, c, distance }
+-- map_route_list[from_id][to_id] = { a, b, c, distance }
 
 local pathfinder_cache = {}
--- pathfinder_cache[from_id][to_id] = { change_number, distance, next_node_1_id, next_node_2_id }
+-- pathfinder_cache[from_id][to_id] = { change_number, distance, path:{} }
 
 local map_node_id_iterator = 0
 local map_change_iterator = 0
@@ -41,21 +41,22 @@ function M.debug_set_properties(node_color, route_color, draw_scale)
     debug_draw_scale = 5
 end
 
+-- local: count size of non-sequences table
+local function table_size(table)
+    local count = 0
+    for _ in pairs(table) do
+        count = count + 1
+    end
+    return count
+end
+
 -- local: Add one way route from node source_id to node destination_id
 local function map_add_oneway_route(source_id, destination_id)
     if map_route_list[source_id] == nil then
         map_route_list[source_id] = {}
     end
 
-    local is_route_exists = false
-    for i = 1, #map_route_list[source_id] do
-        if map_route_list[source_id][i].to_id == destination_id then 
-            is_route_exists = true
-            break
-        end
-    end
-
-    if is_route_exists == false then
+    if map_route_list[source_id][destination_id] == nil then
         -- line equation: ax + by + c = 0
         local a, b, c
         local from_pos = map_node_list[source_id].position
@@ -71,24 +72,24 @@ local function map_add_oneway_route(source_id, destination_id)
             b = 0
             c = -from_pos.x
         end
-        table.insert(map_route_list[source_id], {
-            to_id = destination_id,
+        map_route_list[source_id][destination_id] = {
             a = a,
             b = b,
             c = c,
             distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
-        })
+        }
     end
 end
 
 -- local: update node type parameter
 local function map_update_node_type(node_id)
     if map_route_list[node_id] ~= nil then
-        if #map_route_list[node_id] == nil then
+        local size = table_size(map_route_list[node_id])
+        if size == 0 then
             map_node_list[node_id].type = NODETYPE.single
-        elseif #map_route_list[node_id] == 1 then
+        elseif size == 1 then
             map_node_list[node_id].type = NODETYPE.deadend
-        elseif #map_route_list[node_id] > 1 then
+        elseif size > 1 then
             map_node_list[node_id].type = NODETYPE.intersection
         end
     end
@@ -97,14 +98,9 @@ end
 -- local: remove an existing route between source_id and destination_id nodes
 local function map_remove_oneway_route(source_id, destination_id)
     if map_route_list[source_id] ~= nil then
-        for i = 1, #map_route_list[source_id] do
-            if map_route_list[source_id][i].to_id == destination_id then
-                table.remove(map_route_list[source_id], i)
-                if #map_route_list[source_id] == 0 then
-                    map_route_list[source_id] = nil
-                end
-                break
-            end
+        map_route_list[source_id][destination_id] = nil
+        if table_size(map_route_list[source_id]) == 0 then
+            map_route_list[source_id] = nil
         end
     end
 end
@@ -179,9 +175,9 @@ end
 -- global: debug draw all map routes
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
-        for route_index = 1, #routes do
-            if from_id < routes[route_index].to_id then
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[routes[route_index].to_id].position, color = debug_route_color } )
+        for to_id, route in pairs(routes) do
+            if from_id < to_id then
+                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_route_color } )
             end
         end
     end
@@ -208,13 +204,12 @@ local function calculate_to_nearest_route(position)
     local min_dist = huge
 
     for from_id, routes in pairs(map_route_list) do
-        for route_index = 1, #routes do
-            local route = routes[route_index]
-            if from_id < route.to_id then
+        for to_id, route in pairs(routes) do
+            if from_id < to_id then
                 
                 local is_between, near_pos_x, near_pos_y, dist, dist_from_id, dist_to_id
                 local from_pos = map_node_list[from_id].position
-                local to_pos = map_node_list[route.to_id].position
+                local to_pos = map_node_list[to_id].position
 
                 -- calculate nearest position for every route to it's line equation
                 if from_pos.x ~= to_pos.x then
@@ -273,7 +268,7 @@ local function calculate_to_nearest_route(position)
                         end
                     end
                     min_from_id = from_id
-                    min_to_id = route.to_id
+                    min_to_id = to_id
                 end
                 
             end
@@ -292,9 +287,9 @@ local function calculate_to_nearest_route(position)
     end
 end
 
--- local: calculate graph pathfinder inside map from node id of start_id to finish_id
+-- local: calculate graph path inside map from node id of start_id to finish_id
 -- return: list of node ids, total distance of path
-function M.pathfinder(start_id, finish_id)
+local function calculate_path(start_id, finish_id)
     local previous = {}
     local distances = {}
     local nodes = {}
@@ -324,13 +319,15 @@ function M.pathfinder(start_id, finish_id)
 
                 table.insert(path, 1, { id = smallest, distance = path_distance })
                 
-                for route_index, route in pairs(map_route_list[smallest]) do
-                    if route.to_id == previous[smallest] then
-                        path_distance = path_distance + route.distance
-                        break
-                    end
+                if map_route_list[smallest] == nil then
+                    return nil
                 end
-                
+
+                if map_route_list[smallest][previous[smallest]] == nil then
+                    return nil
+                end
+
+                path_distance = path_distance + map_route_list[smallest][previous[smallest]].distance
                 smallest = previous[smallest];
             end
             table.insert(path, 1, { id = smallest, distance = path_distance })
@@ -341,11 +338,11 @@ function M.pathfinder(start_id, finish_id)
             break;
         end
 
-        for route_index, neighbor in pairs(map_route_list[smallest]) do
+        for to_id, neighbor in pairs(map_route_list[smallest]) do
             local alt = distances[smallest] + neighbor.distance
-            if alt < distances[neighbor.to_id] then
-                distances[neighbor.to_id] = alt;
-                previous[neighbor.to_id] = smallest;
+            if alt < distances[to_id] then
+                distances[to_id] = alt;
+                previous[to_id] = smallest;
             end
         end
 
@@ -354,30 +351,28 @@ function M.pathfinder(start_id, finish_id)
     return path
 end
 
--- local: retrive pathfinder algorithm results from cache or update cache
+-- local: retrive path results from cache or update cache
 -- return: two next node ids and distance to destination
-local function fetch_pathfinder(change_number, from_id, to_id)
+function M.fetch_path(change_number, from_id, to_id)
 
-    if from_id == to_id then
-        return from_id, from_id, 0
-    end
+    -- TODO
+    -- if from_id == to_id then
+    --     return from_id, from_id, 0
+    -- end
 
+    -- TODO
     -- retrive result from cache
-    if pathfinder_cache[from_id] ~= nil then
-        local cache = pathfinder_cache[from_id][to_id]
-        if cache ~= nil then
-            if cache.change_number == change_number then
-                return cache.next_node_1_id, cache.next_node_2_id, cache.distance
-            end
-        end
-    end
+    -- if pathfinder_cache[from_id] ~= nil then
+    --     local cache = pathfinder_cache[from_id][to_id]
+    --     if cache ~= nil then
+    --         if cache.change_number == change_number then
+    --             return cache.next_node_1_id, cache.next_node_2_id, cache.distance
+    --         end
+    --     end
+    -- end
 
     -- update cache if not exists or old
-    local path = pathfinder(from_id, to_id)
-
-    if path == nil then
-        return nil, nil, nil
-    end
+    local path = calculate_path(from_id, to_id)
     
     local distance = path[1].distance
     local path_next_1 = path[1].id
