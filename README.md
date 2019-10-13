@@ -56,7 +56,7 @@ initialize moves from source_position to a node with an id of destination_id ins
 calculate movements from current_position of the game object inside the created map considering given speed and threshold, using last calculated movement data  
 **arguments:** current_position as vector3, speed as number, threshold as number, move_data as table  
 **return:** new movement data as table, move result table like { `position`: next position of game object as vector3, `is_reached`: is game object reached the destination as boolean }  
-> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
+> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function. The value of `threshold` should be higher as go's speed goas up but the minimum value for the `threshold` should be at least 1.  
 
 ### debug_set_properties(node_color, route_color, draw_scale)  
 set debug drawing properties  
