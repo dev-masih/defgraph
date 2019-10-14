@@ -5,7 +5,7 @@ function init(self)
 	-- initilize variables
 	local my_position = go.get_position()
 	local destination_id = 6
-	self.speed = 100.0
+	self.speed = 50.0
 	
 	-- initialize movement for go inside given map
 	self.movement_data = defgraph.move_initialize(my_position, destination_id, 1)

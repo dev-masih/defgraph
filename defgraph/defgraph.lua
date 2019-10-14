@@ -454,6 +454,25 @@ local function fetch_path(change_number, from_id, to_id)
     return pathfinder_cache[from_id][to_id]
 end
 
+local function post_process_path_list(position_list)
+
+    if #position_list < 2 then
+        return position_list
+    end
+
+    local new_position_list = {}
+    table.insert(new_position_list, position_list[1])
+    for i = 1, #position_list - 1 do
+        local Q = 3/4 * position_list[i] + 1/4 * position_list[i + 1]
+        local R = 1/4 * position_list[i] + 3/4 * position_list[i + 1]
+        table.insert(new_position_list, Q)
+        table.insert(new_position_list, R)
+
+    end
+    table.insert(new_position_list, position_list[#position_list])
+    return new_position_list
+end
+
 -- local: initialize moves from source_position to a node with an id of destination_id inside the created map
 -- arguments: source_position as vector3, destination_id as number, initial_face_vector as vector3, current_face_vector as vector3
 -- return: special movement data as table
@@ -497,7 +516,13 @@ local function move_internal_initialize(source_position, destination_id, thresho
         end
 
         -- post process positions
-        
+        position_list = post_process_path_list(position_list)
+        position_list = post_process_path_list(position_list)
+        position_list = post_process_path_list(position_list)
+        position_list = post_process_path_list(position_list)
+        position_list = post_process_path_list(position_list)
+        position_list = post_process_path_list(position_list)
+        -- ----------------------
 
         return {
             change_number = map_change_iterator,
