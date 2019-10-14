@@ -473,7 +473,7 @@ function M.move_initialize(source_position, destination_id, threshold)
         local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
 
         local position_list = {}
-        if near_result.distance > threshold then
+        if near_result.distance > threshold + 1 then
             table.insert(position_list, near_result.position_on_route)
         end
         

@@ -1,8 +1,9 @@
-# DefGraph v2  
+# DefGraph v3  
 
 <img src="example/banner.jpg" alt="routing gif" style="max-width:100%;" />
 
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v2.md">**Changelog and migration guild from version 1 to 2**</a>  
+* <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v3.md">**Changelog and migration guild from version 2 to 3**</a>  
 
 This module contains functions to create a world map as a shape of a graph and the ability to manipulate it at any time, easily see debug drawing of this graph and move go's inside of this graph with utilizing auto pathfinder.  
 
@@ -46,17 +47,21 @@ Adding a two-way route between nodes with ids of source_id and destination_id
 Removing an existing route between nodes with ids of source_id and destination_id  
 **arguments:** source_id as number, destination_id as number  
 
-### move_initialize(source_position, destination_id)  
-initialize moves from source_position to a node with an id of destination_id inside the created map  
-**arguments:** source_position as vector3, destination_id as number  
-**return:** special movement data as table  
-> **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one.  
+### map_update_node_position(node_id, position)  
+Updating an existing node position to a new position  
+**arguments:** node_id as number, position as vector3  
 
-### move_player(current_position, speed, threshold, move_data)  
-calculate movements from current_position of the game object inside the created map considering given speed and threshold, using last calculated movement data  
-**arguments:** current_position as vector3, speed as number, threshold as number, move_data as table  
+### move_initialize(source_position, destination_id, threshold)  
+initialize moves from source_position to a node with an id of destination_id inside the created map and using given threshold for calculations
+**arguments:** source_position as vector3, destination_id as number, threshold as number  
+**return:** special movement data as table  
+> **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one. The value of `threshold` should be higher as go's speed goas up but the minimum value for the `threshold` should be at least 1.  
+
+### move_player(current_position, speed, move_data)  
+calculate movements from current_position of the game object inside the created map considering given speed and using last calculated movement data  
+**arguments:** current_position as vector3, speed as number, move_data as table  
 **return:** new movement data as table, move result table like { `position`: next position of game object as vector3, `is_reached`: is game object reached the destination as boolean }  
-> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function. The value of `threshold` should be higher as go's speed goas up but the minimum value for the `threshold` should be at least 1.  
+> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
 
 ### debug_set_properties(node_color, route_color, draw_scale)  
 set debug drawing properties  
