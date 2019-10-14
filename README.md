@@ -51,16 +51,16 @@ Removing an existing route between nodes with ids of source_id and destination_i
 Updating an existing node position to a new position  
 **arguments:** node_id as number, position as vector3  
 
-### move_initialize(source_position, destination_id, threshold)  
-initialize moves from source_position to a node with an id of destination_id inside the created map and using given threshold for calculations
-**arguments:** source_position as vector3, destination_id as number, threshold as number  
+### move_initialize(source_position, destination_id, threshold, initial_face_vector)  
+initialize moves from source_position to a node with an id of destination_id inside the created map and using given threshold and initial_face_vector as game object initial face direction  
+**arguments:** source_position as vector3, destination_id as number, threshold as number, initial_face_vector as vector3  
 **return:** special movement data as table  
 > **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one. The value of `threshold` should be higher as go's speed goas up but the minimum value for the `threshold` should be at least 1.  
 
 ### move_player(current_position, speed, move_data)  
 calculate movements from current_position of the game object inside the created map considering given speed and using last calculated movement data  
 **arguments:** current_position as vector3, speed as number, move_data as table  
-**return:** new movement data as table, move result table like { `position`: next position of game object as vector3, `is_reached`: is game object reached the destination as boolean }  
+**return:** new movement data as table, move result table like { `position`: next position of game object as vector3, `rotation`: next rotation of game object as quat, `is_reached`: is game object reached the destination as boolean }  
 > **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
 
 ### debug_set_properties(node_color, route_color, draw_scale)  

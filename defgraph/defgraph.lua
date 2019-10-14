@@ -508,8 +508,8 @@ local function move_internal_initialize(source_position, destination_id, thresho
     end
 end
 
--- global: initialize moves from source_position to a node with an id of destination_id inside the created map
--- using initial_face_vector as game object initial face direction
+-- global: initialize moves from source_position to a node with an id of destination_id inside the
+-- created map and using given threshold and initial_face_vector as game object initial face direction
 -- arguments: source_position as vector3, destination_id as number, initial_face_vector as vecotr3
 -- return: special movement data as table
 function M.move_initialize(source_position, destination_id, threshold, initial_face_vector)
