@@ -457,13 +457,14 @@ end
 -- global: initialize moves from source_position to a node with an id of destination_id inside the created map
 -- arguments: source_position as vector3, destination_id as number
 -- return: special movement data as table
-function M.move_initialize(source_position, destination_id)
+function M.move_initialize(source_position, destination_id, threshold)
     local near_result = calculate_to_nearest_route(source_position)
     if near_result == nil then
         -- stay until something changes
         return {
             change_number = map_change_iterator,
             destination_id = destination_id,
+            threshold = threshold,
             path_index = 0,
             path = {}
         }
@@ -472,7 +473,9 @@ function M.move_initialize(source_position, destination_id)
         local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
 
         local position_list = {}
-        table.insert(position_list, near_result.position_on_route)
+        if near_result.distance > threshold then
+            table.insert(position_list, near_result.position_on_route)
+        end
         
         if from_path ~= nil and to_path ~= nil then
             local from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
@@ -494,6 +497,7 @@ function M.move_initialize(source_position, destination_id)
         return {
             change_number = map_change_iterator,
             destination_id = destination_id,
+            threshold = threshold,
             path_index = 1,
             path = position_list
         }
@@ -503,12 +507,14 @@ end
 -- global: calculate movements from current_position of the game object inside the created map considering given speedand threshold, using last calculated movement data
 -- arguments: current_position as vector3, speed as number, threshold as number, move_data as table
 -- return: new movement data as table, move result table like { position: next position of game object as vector3, is_reached: is game object reached the destination as boolean }
-function M.move_player(current_position, speed, threshold, move_data)
+function M.move_player(current_position, speed, move_data)
+
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
-        move_data = M.move_initialize(current_position, move_data.destination_id)
-    end
+        move_data = M.move_initialize(current_position, move_data.destination_id, move_data.threshold)
+    end    
 
+    -- stand still if no route found
     if move_data.path_index == 0 then
         return move_data, { 
             position = current_position,
@@ -517,7 +523,7 @@ function M.move_player(current_position, speed, threshold, move_data)
     end
 
     -- check for reaching path section
-    if distance(current_position, move_data.path[move_data.path_index]) <= threshold + 1 then
+    if distance(current_position, move_data.path[move_data.path_index]) <= move_data.threshold + 1 then
         if move_data.path_index == #move_data.path then
             -- reached destination
             return move_data, {
