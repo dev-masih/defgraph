@@ -552,7 +552,7 @@ function M.move_player(current_position, speed, move_data)
             end
             return move_data, {
                 position = current_position,
-                rotation = nil,
+                rotation = rotation,
                 is_reached = true
             }
         else
