@@ -54,5 +54,5 @@ function update(self, dt)
     defgraph.debug_draw_map_routes()
 
     msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 620, 0) } )
-    msg.post("@render:", "draw_text", { text = "left click: deploy dot - right click: change routes", position = vmath.vector3(20, 600, 0) } )
+    msg.post("@render:", "draw_text", { text = "left click: deploy dot", position = vmath.vector3(20, 600, 0) } )
 end
