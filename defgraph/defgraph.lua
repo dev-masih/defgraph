@@ -526,11 +526,17 @@ function M.move_player(current_position, speed, move_data)
         move_data = move_internal_initialize(current_position, move_data.destination_id, move_data.threshold, move_data.initial_face_vector, move_data.current_face_vector)
     end    
 
+    local rotation
     -- stand still if no route found
     if move_data.path_index == 0 then
+        if move_data.initial_face_vector == nil then
+            rotation = nil
+        else
+            rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector)
+        end
         return move_data, { 
             position = current_position,
-            rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector),
+            rotation = rotation,
             is_reached = false
         }
     end
@@ -539,9 +545,14 @@ function M.move_player(current_position, speed, move_data)
     if distance(current_position, move_data.path[move_data.path_index]) <= move_data.threshold + 1 then
         if move_data.path_index == #move_data.path then
             -- reached destination
+            if move_data.initial_face_vector == nil then
+                rotation = nil
+            else
+                rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector)
+            end
             return move_data, {
                 position = current_position,
-                rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector),
+                rotation = nil,
                 is_reached = true
             }
         else
@@ -554,10 +565,15 @@ function M.move_player(current_position, speed, move_data)
     local direction_vector = move_data.path[move_data.path_index] - current_position
     direction_vector.z = 0
     direction_vector = vmath.normalize(direction_vector)
-    move_data.current_face_vector = direction_vector
+    if move_data.initial_face_vector == nil then
+        rotation = nil
+    else
+        rotation = vmath.quat_from_to(move_data.initial_face_vector, direction_vector)
+        move_data.current_face_vector = direction_vector
+    end
     return move_data, {
         position = (current_position +  direction_vector * speed),
-        rotation = vmath.quat_from_to(move_data.initial_face_vector, direction_vector),
+        rotation = rotation,
         is_reached = false
     }
 end
