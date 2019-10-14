@@ -496,6 +496,9 @@ local function move_internal_initialize(source_position, destination_id, thresho
             end
         end
 
+        -- post process positions
+        
+
         return {
             change_number = map_change_iterator,
             destination_id = destination_id,
