@@ -51,7 +51,6 @@ function update(self, dt)
     end
 
     -- draw debug info of nodes and routes
-    --defgraph.debug_draw_map_nodes(true)
     defgraph.debug_draw_map_routes()
 
     msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 620, 0) } )
