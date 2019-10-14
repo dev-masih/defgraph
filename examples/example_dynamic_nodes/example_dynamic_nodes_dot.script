@@ -8,7 +8,7 @@ function init(self)
 	self.speed = 200.0
 	
 	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, destination_id, 4, vmath.vector3(0, 1, 0))
+	self.movement_data = defgraph.move_initialize(my_position, destination_id, 10, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)

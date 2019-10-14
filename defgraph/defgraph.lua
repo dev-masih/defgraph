@@ -555,13 +555,9 @@ function M.move_player(current_position, speed, move_data)
     direction_vector.z = 0
     direction_vector = vmath.normalize(direction_vector)
     move_data.current_face_vector = direction_vector
-
-    local rot = vmath.quat_from_to(move_data.initial_face_vector, direction_vector)
-    print("deg: " .. math.deg(math.atan(rot.z/rot.w)*2))
-
     return move_data, {
         position = (current_position +  direction_vector * speed),
-        rotation = rot,
+        rotation = vmath.quat_from_to(move_data.initial_face_vector, direction_vector),
         is_reached = false
     }
 end
