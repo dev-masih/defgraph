@@ -568,8 +568,12 @@ function M.move_player(current_position, speed, move_data)
     if move_data.initial_face_vector == nil then
         rotation = nil
     else
-        rotation = vmath.quat_from_to(move_data.initial_face_vector, direction_vector)
-        move_data.current_face_vector = direction_vector
+        local rotation_vector = vmath.slerp(0.5 * speed, move_data.current_face_vector, direction_vector)
+        rotation = vmath.quat_from_to(move_data.initial_face_vector, rotation_vector)
+        if rotation.x ~= rotation.x then
+            rotation = vmath.quat_rotation_z(math.pi)
+        end
+        move_data.current_face_vector = rotation_vector
     end
     return move_data, {
         position = (current_position +  direction_vector * speed),
