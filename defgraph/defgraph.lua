@@ -454,10 +454,10 @@ local function fetch_path(change_number, from_id, to_id)
     return pathfinder_cache[from_id][to_id]
 end
 
--- global: initialize moves from source_position to a node with an id of destination_id inside the created map
--- arguments: source_position as vector3, destination_id as number
+-- local: initialize moves from source_position to a node with an id of destination_id inside the created map
+-- arguments: source_position as vector3, destination_id as number, initial_face_vector as vector3, current_face_vector as vector3
 -- return: special movement data as table
-function M.move_initialize(source_position, destination_id, threshold)
+local function move_internal_initialize(source_position, destination_id, threshold, initial_face_vector, current_face_vector)
     local near_result = calculate_to_nearest_route(source_position)
     if near_result == nil then
         -- stay until something changes
@@ -466,7 +466,9 @@ function M.move_initialize(source_position, destination_id, threshold)
             destination_id = destination_id,
             threshold = threshold,
             path_index = 0,
-            path = {}
+            path = {},
+            initial_face_vector = initial_face_vector,
+            current_face_vector = current_face_vector
         }
     else
         local from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_id)
@@ -499,9 +501,19 @@ function M.move_initialize(source_position, destination_id, threshold)
             destination_id = destination_id,
             threshold = threshold,
             path_index = 1,
-            path = position_list
+            path = position_list,
+            initial_face_vector = initial_face_vector,
+            current_face_vector = current_face_vector
         }
     end
+end
+
+-- global: initialize moves from source_position to a node with an id of destination_id inside the created map
+-- using initial_face_vector as game object initial face direction
+-- arguments: source_position as vector3, destination_id as number, initial_face_vector as vecotr3
+-- return: special movement data as table
+function M.move_initialize(source_position, destination_id, threshold, initial_face_vector)
+    return move_internal_initialize(source_position, destination_id, threshold, initial_face_vector, initial_face_vector)
 end
 
 -- global: calculate movements from current_position of the game object inside the created map considering given speedand threshold, using last calculated movement data
@@ -511,13 +523,14 @@ function M.move_player(current_position, speed, move_data)
 
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
-        move_data = M.move_initialize(current_position, move_data.destination_id, move_data.threshold)
+        move_data = move_internal_initialize(current_position, move_data.destination_id, move_data.threshold, move_data.initial_face_vector, move_data.current_face_vector)
     end    
 
     -- stand still if no route found
     if move_data.path_index == 0 then
         return move_data, { 
             position = current_position,
+            rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector),
             is_reached = false
         }
     end
@@ -528,6 +541,7 @@ function M.move_player(current_position, speed, move_data)
             -- reached destination
             return move_data, {
                 position = current_position,
+                rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector),
                 is_reached = true
             }
         else
@@ -540,8 +554,10 @@ function M.move_player(current_position, speed, move_data)
     local direction_vector = move_data.path[move_data.path_index] - current_position
     direction_vector.z = 0
     direction_vector = vmath.normalize(direction_vector)
+    move_data.current_face_vector = direction_vector
     return move_data, {
         position = (current_position +  direction_vector * speed),
+        rotation = vmath.quat_from_to(move_data.initial_face_vector, direction_vector),
         is_reached = false
     }
 end

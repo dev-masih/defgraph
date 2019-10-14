@@ -5,10 +5,10 @@ function init(self)
 	-- initilize variables
 	local my_position = go.get_position()
 	local destination_id = 36
-	self.speed = 200.0
+	self.speed = 100.0
 	
 	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, destination_id, 4)
+	self.movement_data = defgraph.move_initialize(my_position, destination_id, 4, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
@@ -18,6 +18,8 @@ function update(self, dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.move_result.position)
+	print(self.move_result.rotation)
+	go.set_rotation(self.move_result.rotation)
 
 	-- you can check if go reached to the destination
 	if self.move_result.is_reached then
