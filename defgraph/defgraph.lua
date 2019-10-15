@@ -1,12 +1,13 @@
 -- DefGraph
 -- This module contains functions to create a world map as a shape of a graph and the ability
--- to manipulate it at any time, easily see debug drawing of this graph and move go's inside
--- of this graph with utilizing auto pathfinder.
+-- to manipulate it at any time, easily see debug drawing of this graph and move and rotate
+-- game objects inside of this graph with utilizing auto pathfinder.
 
 local M = {}
 
 local map_node_list = {}
 -- map_node_list[node_id] = { position, type }
+
 local map_route_list = {}
 -- map_route_list[from_id][to_id] = { a, b, c, distance }
 
@@ -21,12 +22,17 @@ local NODETYPE = {
     intersection = 2
 }
 
--- local: color vectors for debug drawing
+-- local: color vectors and scale of debug drawing
 local debug_node_color = vmath.vector4(1, 0, 1, 1)
 local debug_route_color = vmath.vector4(0, 1, 0, 1)
-
--- local: scale of node symboles for debug drawing
 local debug_draw_scale = 5
+
+-- local: main settings
+local settings_main_go_threshold = 1
+local settings_main_path_curve_tightness = 4
+local settings_main_path_curve_roundness = 3
+local settings_main_path_curve_max_distance_from_corner = 10
+local settings_main_allow_enter_on_route = true
 
 -- local: math functions
 local sqrt = math.sqrt
@@ -35,14 +41,12 @@ local abs = math.abs
 local huge = math.huge
 local pi = math.pi
 
--- local: main settings
-local settings_main_path_curve_tightness = 4
-local settings_main_path_curve_roundness = 3
-local settings_main_path_curve_max_distance_from_corner = 10
-local settings_main_allow_enter_on_route = true
-local settings_main_go_threshold = 1
-
--- global: initialize main settings
+-- global: Set the main path and move calculation properties, nil inputs will fall back to default values.
+-- arguments: settings_go_threshold as optional number [1]
+--            settings_path_curve_tightness as optional number [4]
+--            settings_path_curve_roundness as optional number [3]
+--            settings_path_curve_max_distance_from_corner as optional number [10]
+--            settings_allow_enter_on_route as optional boolean [true]
 function M.map_set_properties(settings_go_threshold, settings_path_curve_tightness, settings_path_curve_roundness
     , settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
     if settings_go_threshold ~= nil then
@@ -62,8 +66,9 @@ function M.map_set_properties(settings_go_threshold, settings_path_curve_tightne
     end
 end
 
--- global: update node position
--- arguments: node_id as number, position as vecotr3
+-- global: Update an existing node position.
+-- arguments: node_id as number
+--            position as vecotr3
 function M.map_update_node_position(node_id, position)
     if map_node_list[node_id] ~= nil then
         map_node_list[node_id].position = position
@@ -92,11 +97,14 @@ function M.map_update_node_position(node_id, position)
         }
         map_route_list[to_id][node_id] = map_route_list[node_id][to_id]
     end
+    -- map shape is changed
     map_change_iterator = map_change_iterator + 1
 end
 
--- global: set debug drawing properties
--- arguments: node_color as vector4, route_color as vector4, draw_scale as number
+-- global: Set the debug drawing properties, nil inputs will fall back to default values.
+-- arguments: node_color as optional vector4 [vector4(1, 0, 1, 1)]
+--            route_color as optional vector4 [vector4(0, 1, 0, 1)]
+--            draw_scale as optional number [5]
 function M.debug_set_properties(node_color, route_color, draw_scale)
     if node_color ~= nil then
         debug_node_color = node_color
@@ -109,7 +117,9 @@ function M.debug_set_properties(node_color, route_color, draw_scale)
     end
 end
 
--- local: count size of non-sequences table
+-- local: Count size of non-sequential table.
+-- arguments: table as table
+-- return: size of table as number
 local function table_size(table)
     local count = 0
     for _ in pairs(table) do
@@ -118,7 +128,9 @@ local function table_size(table)
     return count
 end
 
--- local: Add one way route from node source_id to node destination_id
+-- local: Add one way route from one node to another.
+-- arguments: source_id as number
+--            destination_id as number
 local function map_add_oneway_route(source_id, destination_id)
     if map_route_list[source_id] == nil then
         map_route_list[source_id] = {}
@@ -149,7 +161,8 @@ local function map_add_oneway_route(source_id, destination_id)
     end
 end
 
--- local: update node type parameter
+-- local: Update node type parameter.
+-- arguments: node_id as number
 local function map_update_node_type(node_id)
     if map_route_list[node_id] ~= nil then
         local size = table_size(map_route_list[node_id])
@@ -163,7 +176,9 @@ local function map_update_node_type(node_id)
     end
 end
 
--- local: remove an existing route between source_id and destination_id nodes
+-- local: Remove an existing route between two nodes.
+-- arguments: source_id as number
+--            destination_id as number
 local function map_remove_oneway_route(source_id, destination_id)
     if map_route_list[source_id] ~= nil then
         map_route_list[source_id][destination_id] = nil
@@ -173,7 +188,7 @@ local function map_remove_oneway_route(source_id, destination_id)
     end
 end
 
--- global: Adding a node at the given position (position.z will get ignored)
+-- global: Adding a node at the given position (position.z will get ignored).
 -- arguments: position as vector3
 -- return: Newly added node id as number
 function M.map_add_node(position)
@@ -184,8 +199,9 @@ function M.map_add_node(position)
     return node_id
 end
 
--- global: Adding a two-way route between nodes with ids of source_id and destination_id
--- arguments: source_id as number, destination_id as number
+-- global: Adding a two-way route between two nodes.
+-- arguments: source_id as number
+--            destination_id as number
 function M.map_add_route(source_id, destination_id)
     if map_node_list[source_id] == nil 
     or map_node_list[destination_id] == nil
@@ -199,8 +215,9 @@ function M.map_add_route(source_id, destination_id)
     map_change_iterator = map_change_iterator + 1
 end
 
--- global: Removing an existing route between nodes with ids of source_id and destination_id
--- arguments: source_id as number, destination_id as number
+-- global: Removing an existing route between two nodes.
+-- arguments: source_id as number
+--            destination_id as number
 function M.map_remove_route(source_id, destination_id)
     if map_node_list[source_id] == nil
     or map_node_list[destination_id] == nil
@@ -214,9 +231,8 @@ function M.map_remove_route(source_id, destination_id)
     map_change_iterator = map_change_iterator + 1
 end
 
-
--- global: debug draw all map nodes and choose to show node ids or not
--- arguments: is_show_ids as boolean
+-- global: Debug draw all map nodes and choose to show node ids or not.
+-- arguments: is_show_ids as optional boolean [false]
 function M.debug_draw_map_nodes(is_show_ids)
     for node_id, node in pairs(map_node_list) do
         if is_show_ids then
@@ -244,7 +260,7 @@ function M.debug_draw_map_nodes(is_show_ids)
     end
 end
 
--- global: debug draw all map routes
+-- global: Debug draw all map routes.
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
@@ -255,8 +271,10 @@ function M.debug_draw_map_routes()
     end
 end
 
--- global: debug draw player specific movement_data with given color
--- arguments: movement_data as table, color as vector4, is_show_intersection as boolean
+-- global: Debug draw player specific path with given color.
+-- arguments: movement_data as table
+--            color as vector4
+--            is_show_intersection as optional boolean [false]
 function M.debug_draw_player_move(movement_data, color, is_show_intersection)
     if movement_data.path_index ~= 0 then
         for index = movement_data.path_index, #movement_data.path do
@@ -271,13 +289,17 @@ function M.debug_draw_player_move(movement_data, color, is_show_intersection)
     end
 end
 
-
--- local: calculate distance between two vector 3
+-- local: Calculate distance between two vector3.
+-- arguments: source as vecotr3
+--            destination as vecotr3
+-- return: distance as number
 local function distance(source, destination)
     return sqrt(pow(source.x - destination.x, 2) + pow(source.y - destination.y, 2))
 end
 
--- local: shallow copy a table
+-- local: Shallow copy a table.
+-- arguments: table as table
+-- return: duplicated table as table
 local function shallow_copy(table)
     local new_table = {}
     for key, value in pairs(table) do
@@ -286,8 +308,13 @@ local function shallow_copy(table)
     return new_table
   end
 
--- local: calculate neareset position on nearest route on map to given position
--- return: table include vecotr3 for position on a nearest route, distance to that position and node ids for that nearest route
+-- local: Calculate the nearest position on the nearest route on the map from the given position.
+-- arguments: position as vecotr3
+-- return: near_result as table {
+--              position_on_route as vecotr3,
+--              distance as number
+--              route_from_id as number
+--              route_to_id as number }
 local function calculate_to_nearest_route(position)
     local min_from_id, min_to_id
     local min_near_pos_x, min_near_pos_y
@@ -366,6 +393,7 @@ local function calculate_to_nearest_route(position)
     end
 
     if min_dist == huge then
+        -- if no route exists
         return nil
     else
         return {
@@ -377,8 +405,12 @@ local function calculate_to_nearest_route(position)
     end
 end
 
--- local: calculate graph path inside map from node id of start_id to finish_id
--- return: list of node ids, total distance of path
+-- local: Calculate graph path inside map from a node to another node.
+-- arguments: start_id as number
+--            finish_id as number
+-- return: path_result as list of table {
+--              id as number,
+--              distance as number }           
 local function calculate_path(start_id, finish_id)
     local previous = {}
     local distances = {}
@@ -441,8 +473,14 @@ local function calculate_path(start_id, finish_id)
     return path
 end
 
--- local: retrive path results from cache or update cache
--- return: cache includes distance and path table to destination
+-- local: Retrive path results from cache or update cache.
+-- arguments: change_number as number
+--            from_id as number
+--            to_id as number
+-- return: cache table as table {
+--              change_number as number,
+--              distance as number
+--              path as list of number }
 local function fetch_path(change_number, from_id, to_id)
 
     -- check for same from and to id
@@ -490,7 +528,12 @@ local function fetch_path(change_number, from_id, to_id)
     return pathfinder_cache[from_id][to_id]
 end
 
-local function post_process_path_list(position_list, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+-- local: Calculate path curvature.
+-- arguments: position_list as list table
+--            settings_path_curve_tightness as number
+--            settings_path_curve_max_distance_from_corner as number
+-- return: curve postions as list table of vector3
+local function process_path_curvature(position_list, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
     if #position_list < 2 then
         return position_list
     end
@@ -518,8 +561,16 @@ local function post_process_path_list(position_list, settings_path_curve_tightne
     return new_position_list
 end
 
--- local: initialize moves from source_position to a node with an id of destination_id inside the created map
--- arguments: source_position as vector3, destination_id as number, initial_face_vector as vector3, current_face_vector as vector3
+-- local: Initialize moves from source position to a node with an destination node inside the created map.
+-- arguments: source_position as vector3
+--            destination_id as number
+--            settings_go_threshold as number
+--            initial_face_vector as vector3
+--            current_face_vector as vector3
+--            settings_path_curve_tightness as number
+--            settings_path_curve_roundness as number
+--            settings_path_curve_max_distance_from_corner as number
+--            settings_allow_enter_on_route as boolean
 -- return: special movement data as table
 local function move_internal_initialize(source_position, destination_id, settings_go_threshold, initial_face_vector
     , current_face_vector, settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner
@@ -568,14 +619,11 @@ local function move_internal_initialize(source_position, destination_id, setting
             end
         end
 
-        -- post process positions
         for i = 1, settings_path_curve_roundness do
-            position_list = post_process_path_list(position_list, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+            position_list = process_path_curvature(position_list, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
         end
-        -- ----------------------
 
         table.remove(position_list, 1)
-
         return {
             change_number = map_change_iterator,
             destination_id = destination_id,
@@ -592,9 +640,17 @@ local function move_internal_initialize(source_position, destination_id, setting
     end
 end
 
--- global: initialize moves from source_position to a node with an id of destination_id inside the
--- created map and using given threshold and initial_face_vector as game object initial face direction
--- arguments: source_position as vector3, destination_id as number, initial_face_vector as vecotr3
+-- global: Initialize moves from a source position to destination node inside the created map and
+-- using given threshold and initial face vector as game object initial face direction and path
+-- calculate settings, the optional value will fall back to their default values.
+-- arguments: source_position as vector3
+--            destination_id as number
+--            initial_face_vector as optional vecotr3
+--            settings_go_threshold as optional number
+--            settings_path_curve_tightness as optional number
+--            settings_path_curve_roundness as optional number
+--            settings_path_curve_max_distance_from_corner as optional number
+--            settings_allow_enter_on_route as optional boolean
 -- return: special movement data as table
 function M.move_initialize(source_position, destination_id, initial_face_vector, settings_go_threshold
     , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
@@ -623,9 +679,16 @@ function M.move_initialize(source_position, destination_id, initial_face_vector,
     , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
 end
 
--- global: calculate movements from current_position of the game object inside the created map considering given speedand threshold, using last calculated movement data
--- arguments: current_position as vector3, speed as number, threshold as number, move_data as table
--- return: new movement data as table, move result table like { position: next position of game object as vector3, is_reached: is game object reached the destination as boolean }
+-- global: Calculate movements from current position of the game object inside the created map
+-- considering given speed, using last calculated movement data
+-- arguments: current_position as vector3
+--            speed as number
+--            move_data as table
+-- return: new movement data as table
+--         move result table {
+--              position as vector3,
+--              rotation as vector3,
+--              is_reached as boolean }
 function M.move_player(current_position, speed, move_data)
 
     -- check for map updates
