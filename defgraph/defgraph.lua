@@ -222,15 +222,17 @@ function M.debug_draw_map_routes()
 end
 
 -- global: debug draw player specific movement_data with given color
--- arguments: movement_data as table, color as vector4
-function M.debug_draw_player_move(movement_data, color)
+-- arguments: movement_data as table, color as vector4, is_show_intersection as boolean
+function M.debug_draw_player_move(movement_data, color, is_show_intersection)
     if movement_data.path_index ~= 0 then
         for index = movement_data.path_index, #movement_data.path do
             if index ~= #movement_data.path then
                 msg.post("@render:", "draw_line", { start_point = movement_data.path[index], end_point = movement_data.path[index + 1], color = color } )
             end
-            msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
-            msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+            if is_show_intersection then
+                msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
+                msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+            end
         end
     end
 end
@@ -456,6 +458,8 @@ end
 
 local function post_process_path_list(position_list)
 
+    local precision = 10
+
     if #position_list < 2 then
         return position_list
     end
@@ -463,8 +467,8 @@ local function post_process_path_list(position_list)
     local new_position_list = {}
     table.insert(new_position_list, position_list[1])
     for i = 1, #position_list - 1 do
-        local Q = 3/4 * position_list[i] + 1/4 * position_list[i + 1]
-        local R = 1/4 * position_list[i] + 3/4 * position_list[i + 1]
+        local Q = (precision - 1) / precision * position_list[i] + position_list[i + 1] / precision
+        local R = position_list[i] / precision + (precision - 1) / precision * position_list[i + 1]
         table.insert(new_position_list, Q)
         table.insert(new_position_list, R)
 
@@ -494,6 +498,8 @@ local function move_internal_initialize(source_position, destination_id, thresho
         local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
 
         local position_list = {}
+        table.insert(position_list, source_position)
+
         if near_result.distance > threshold + 1 then
             table.insert(position_list, near_result.position_on_route)
         end
@@ -521,8 +527,9 @@ local function move_internal_initialize(source_position, destination_id, thresho
         position_list = post_process_path_list(position_list)
         position_list = post_process_path_list(position_list)
         position_list = post_process_path_list(position_list)
-        position_list = post_process_path_list(position_list)
         -- ----------------------
+
+        table.remove(position_list, 1)
 
         return {
             change_number = map_change_iterator,
@@ -570,7 +577,7 @@ function M.move_player(current_position, speed, move_data)
     end
 
     -- check for reaching path section
-    if distance(current_position, move_data.path[move_data.path_index]) <= move_data.threshold + 1 then
+    while distance(current_position, move_data.path[move_data.path_index]) <= move_data.threshold + 1 do
         if move_data.path_index == #move_data.path then
             -- reached destination
             if move_data.initial_face_vector == nil then
