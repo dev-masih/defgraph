@@ -27,4 +27,6 @@ function update(self, dt)
 		print("I'm at destination!")
 		go.delete()
 	end
+
+	defgraph.debug_draw_player_move(self.movement_data, vmath.vector4(1, 1, 0, 1))
 end
