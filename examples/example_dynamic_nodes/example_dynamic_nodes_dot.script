@@ -8,7 +8,7 @@ function init(self)
 	self.speed = 200.0
 	
 	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, destination_id, vmath.vector3(0, 1, 0), 20)
+	self.movement_data = defgraph.move_initialize(my_position, destination_id, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
@@ -18,6 +18,8 @@ function update(self, dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.move_result.position)
+
+	-- update go rotation based of returned result
 	go.set_rotation(self.move_result.rotation)
 
 	-- you can check if go reached to the destination
