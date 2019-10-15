@@ -32,6 +32,35 @@ local defgraph = require("defgraph.defgraph")
 ```
 Then you can use the DefGraph functions using this module.  
 
+[Official Defold game asset page for DefGraph](https://defold.com/assets/defgraph/)
+
+## Module Settings  
+There are several parameters for module to works with, you can change these parameters one time for entire module with `map_set_properties` and let each game object inharate those or set these parameters or each game object with `move_initialize` function. If you choose to not change any of them module uses it's own default values.  
+#### **Threshold:**  
+This `number` value used as detection of is an object is on a route or not. It's better to use bigger value as object speed is getting higher to have better movement experience. module default value is `1`. minimum for this value should be `1`.  
+#### **Path Curve Tightness:**  
+This `number` value determine how tight a turn on path should be. module defaulf value is `4`. minimum for this value should be `2`.  
+<img src="examples/raw/tness_2.jpg" alt="Tightness 2"/> | <img src="examples/raw/tness_3.jpg" alt="Tightness 3"/> | <img src="examples/raw/tness_8.jpg" alt="Tightness 8"/>
+--- | --- | ---
+Tightness: 2 | Tightness: 3 | Tightness: 8  
+
+#### **Path Curve Roundness:**  
+This `number` value determine how round a turn on path should be. module defaulf value is `3`. If this value equals to `0` the path will not have any curve and value of `settings_path_curve_tightness` and `settings_path_curve_max_distance_from_corner` will get ignored. higher value for roundness with need more processing power specially when your map nodes are dynamically moving.  
+<img src="examples/raw/round_0.jpg" alt="Roundness 0"/> | <img src="examples/raw/round_1.jpg" alt="Roundness 1"/> | <img src="examples/raw/round_5.jpg" alt="Roundness 5"/>
+--- | --- | ---
+Roundness: 0 | Roundness: 1 | Roundness: 5  
+
+#### **Path Curve Max Distance From Corner:**  
+This `number` value determine maximum value of a turn distance to a corner. module defaulf value is `10`. If this value equals to `0` the path will not have any curve but you should set `settings_path_curve_roundness` to `0` if this is what you want.  
+<img src="examples/raw/max_10.jpg" alt="Max 10"/> | <img src="examples/raw/max_30.jpg" alt="Max 30"/> | <img src="examples/raw/max_50.jpg" alt="Max 50"/>
+--- | --- | ---
+Max: 10 | Max: 30 | Max: 50  
+
+#### **Allow Enter on Route:**  
+This `boolean` value determine is a game object allow entering a map in middle of route or is should enter it from corners only. module defaulf value is `true`.  
+<img src="examples/raw/allow_false.jpg" alt="False"/> | <img src="examples/raw/allow_true.jpg" alt="True"/>
+--- | --- | ---
+False | True 
 ## Functions  
 These are the list of available functions to use, for better understanding of how this module works, please take a look at project example.  
 
