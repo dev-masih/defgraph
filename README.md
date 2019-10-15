@@ -1,6 +1,6 @@
 # DefGraph v3  
 
-<img src="example/banner.jpg" alt="routing gif" style="max-width:100%;" />
+<img src="examples/raw/banner.jpg" alt="routing gif" style="max-width:100%;" />
 
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v3.md">**Changelog and migration guild from version 2 to 3**</a>  
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v2.md">**Changelog and migration guild from version 1 to 2**</a>  
