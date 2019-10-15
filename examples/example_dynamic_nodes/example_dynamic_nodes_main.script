@@ -16,7 +16,7 @@ function init(self)
 
     -- defining graph nodes of the map
     local is_up = true
-    local start_position = vmath.vector3(200, 200, 0)
+    local start_position = vmath.vector3(100, 200, 0)
     for i = 1, 36 do
         if is_up then
             start_position = start_position + vmath.vector3(20, 20, 0)
@@ -35,18 +35,10 @@ function init(self)
         table.insert(self.node_goas_up, is_up)
     end
 
-    local exiting_node_1 = defgraph.map_add_node(vmath.vector3(100, 300, 0))
-    local exiting_node_2 = defgraph.map_add_node(vmath.vector3(100, 100, 0))
-    local exiting_node_3 = defgraph.map_add_node(vmath.vector3(300, 100, 0))
-
     -- defining routes between nodes
     for i = 1, #self.node_ids - 1 do
         defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1])
     end
-
-    defgraph.map_add_route(exiting_node_1, self.node_ids[1])
-    defgraph.map_add_route(exiting_node_1, exiting_node_2)
-    defgraph.map_add_route(exiting_node_2, exiting_node_3)
 end
 
 function on_input(self, action_id, action)
