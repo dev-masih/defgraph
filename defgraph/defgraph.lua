@@ -716,16 +716,23 @@ function M.move_player(current_position, speed, move_data)
     -- check for reaching path section
     while distance(current_position, move_data.path[move_data.path_index]) <= move_data.settings_go_threshold + 1 do
         if move_data.path_index == #move_data.path then
-            -- reached destination
+            -- reached next path node
             if move_data.initial_face_vector == nil then
                 rotation = nil
             else
                 rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector)
             end
+
+            -- reached destination
+            local is_reached = true
+            if distance(current_position, map_node_list[move_data.destination_id].position) > move_data.settings_go_threshold + 1 then
+                is_reached = false
+            end
+
             return move_data, {
                 position = current_position,
                 rotation = rotation,
-                is_reached = true
+                is_reached = is_reached
             }
         else
             -- go for next section
