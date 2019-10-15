@@ -533,32 +533,43 @@ end
 --            settings_path_curve_tightness as number
 --            settings_path_curve_max_distance_from_corner as number
 -- return: curve postions as list table of vector3
-local function process_path_curvature(position_list, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
-    if #position_list < 2 then
-        return position_list
-    end
+local function process_path_curvature(before, current, after, roundness, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
 
     local new_position_list = {}
-    table.insert(new_position_list, position_list[1])
-    for i = 1, #position_list - 1 do
-        local Q = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * position_list[i] + position_list[i + 1] / settings_path_curve_tightness
-        
-        if distance(Q, position_list[i]) > settings_path_curve_max_distance_from_corner then
-            Q = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(position_list[i], position_list[i + 1]), position_list[i], position_list[i + 1])
-        end
-        
-        local R = position_list[i] / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * position_list[i + 1]
-
-        if distance(R, position_list[i + 1]) > settings_path_curve_max_distance_from_corner then
-            R = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(position_list[i], position_list[i + 1]), position_list[i + 1], position_list[i])
-        end
-
-        table.insert(new_position_list, Q)
-        table.insert(new_position_list, R)
-
+    
+    local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before + current / settings_path_curve_tightness
+    local R_before = before / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current
+    local Q_after = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current + after / settings_path_curve_tightness
+    local R_after = current / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * after
+    
+    if distance(Q_before, before) > settings_path_curve_max_distance_from_corner then
+        Q_before = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(before, current), before, current)
     end
-    table.insert(new_position_list, position_list[#position_list])
-    return new_position_list
+    if distance(R_before, current) > settings_path_curve_max_distance_from_corner then
+        R_before = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(before, current), current, before)
+    end
+    if distance(Q_after, current) > settings_path_curve_max_distance_from_corner then
+        Q_after = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(current, after), current, after)
+    end
+    if distance(R_after, after) > settings_path_curve_max_distance_from_corner then
+        R_after = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(current, after), after, current)
+    end
+
+    if roundness ~= 1 then
+        local new_list_before = process_path_curvature(Q_before, R_before, Q_after, roundness - 1, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+        local new_list_after = process_path_curvature(R_before, Q_after, R_after, roundness - 1, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+
+        for key, value in pairs(new_list_before) do
+            table.insert(new_position_list, value)
+        end
+        for key, value in pairs(new_list_after) do
+            table.insert(new_position_list, value)
+        end
+    else
+        table.insert(new_position_list, R_before)
+        table.insert(new_position_list, Q_after)
+    end
+    return new_position_list, Q_before, R_after
 end
 
 -- local: Initialize moves from source position to a node with an destination node inside the created map.
@@ -619,16 +630,37 @@ local function move_internal_initialize(source_position, destination_id, setting
             end
         end
 
-        for i = 1, settings_path_curve_roundness do
-            position_list = process_path_curvature(position_list, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+        local new_position_list = {}
+        if settings_path_curve_roundness ~= 0 then
+            table.insert(new_position_list, position_list[1])
+
+            for i = 2, #position_list - 1 do
+                local partial_position_list, Q_before, R_after = process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1]
+                , settings_path_curve_roundness, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+
+                if i == 2 then
+                    table.insert(new_position_list, Q_before)
+                end
+
+                for key, value in pairs(partial_position_list) do
+                    table.insert(new_position_list, value)
+                end
+
+                if i == #position_list - 1 then
+                    table.insert(new_position_list, R_after)
+                end
+            end
+
+            table.insert(new_position_list, position_list[#position_list])
+        else
+            new_position_list = position_list
         end
 
-        table.remove(position_list, 1)
         return {
             change_number = map_change_iterator,
             destination_id = destination_id,
             path_index = 1,
-            path = position_list,
+            path = new_position_list,
             initial_face_vector = initial_face_vector,
             current_face_vector = current_face_vector,
             settings_go_threshold = settings_go_threshold,
