@@ -1,6 +1,7 @@
 # Changelog and migration guild from version 2 to 3  
 
 * Added ability for game objects to have curved corner paths.
+* Added ability to track game object rotation as move result.
 * Added separate examples for static and dynamic map nodes.  
 * Added documentation for module settings.
 * Added `map_update_node_position` function to update node positions. now entire map can move dynamically.  

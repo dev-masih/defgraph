@@ -10,12 +10,13 @@ This module contains functions to create a world map as a shape of a graph and t
 You can define a graph with several nodes and routes between them and the extension takes care of finding and moving your go inside this graph with just one call inside player update function.  
 the gif bellow shows you this exactly when the destination for all red circles is node number 6.  
 
-<img src="example/routing.gif" alt="routing gif" style="max-width:100%;" />
+<img src="examples/raw/static_routing_v3.gif" alt="static routing gif" style="max-width:100%;" />
 
 As you can see staying on the routes is the number one rule for red circles and they are going to the destination with minimum distance. all you have seen in this gif except for red circles, drawn by defGraph module and all of them are customizable.  
 defGraph is adaptable to map change so even if you add or remove routes in the middle of the game extension tries to find the better road for you.  
+also, you can update nodes positions, another word you can have dynamically moving routes ;)
 
-<img src="example/dynamic-routing.gif" alt="routing gif" style="max-width:100%;" />
+<img src="examples/raw/dynamic_routing_v3.gif" alt="dynamic routing gif" style="max-width:100%;" />
 
 This is a community project you are welcome to contribute to it, sending PR, suggest a feature or report a bug.  
 
