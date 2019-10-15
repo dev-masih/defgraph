@@ -34,46 +34,90 @@ Then you can use the DefGraph functions using this module.
 ## Functions  
 These are the list of available functions to use, for better understanding of how this module works, please take a look at project example.  
 
+---  
+### map_set_properties([settings_go_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
+Set the main path and move calculation properties, nil inputs will fall back to module default values. These values will overwrite default module values.  
+#### **arguments:**  
+* `optional number` settings_go_threshold `[default = 1]`  
+* `optional number` settings_path_curve_tightness `[default = 4]`  
+* `optional number` settings_path_curve_roundness `[default = 3]`  
+* `optional number` settings_path_curve_max_distance_from_corner `[default = 10]`  
+* `optional boolean` settings_allow_enter_on_route `[default = true]`  
+---
 ### map_add_node(position)  
-Adding a node at the given position (position.z will get ignored)  
-**arguments:** position as vector3  
-**return:** Newly added node id as number  
-
+Adding a node at the given position (position.z will get ignored).  
+#### **arguments:**  
+* `vector3` position  
+#### **return:**  
+* `number` Newly added node id  
+---  
 ### map_add_route(source_id, destination_id)  
-Adding a two-way route between nodes with ids of source_id and destination_id  
-**arguments:** source_id as number, destination_id as number  
-
+Adding a two-way route between two nodes.  
+#### **arguments:**  
+* `number` source_id  
+* `number` destination_id  
+---  
 ### map_remove_route(source_id, destination_id)  
-Removing an existing route between nodes with ids of source_id and destination_id  
-**arguments:** source_id as number, destination_id as number  
-
+Removing an existing route between two nodes.  
+#### **arguments:**  
+* `number` source_id  
+* `number` destination_id  
+---  
 ### map_update_node_position(node_id, position)  
-Updating an existing node position to a new position  
-**arguments:** node_id as number, position as vector3  
-
-### move_initialize(source_position, destination_id, threshold, initial_face_vector)  
-initialize moves from source_position to a node with an id of destination_id inside the created map and using given threshold and initial_face_vector as game object initial face direction  
-**arguments:** source_position as vector3, destination_id as number, threshold as number, initial_face_vector as vector3  
-**return:** special movement data as table  
-> **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one. The value of `threshold` should be higher as go's speed goas up but the minimum value for the `threshold` should be at least 1.  
-
+Update an existing node position.  
+#### **arguments:**  
+* `number` node_id  
+* `vector3` position  
+---  
+### move_initialize(source_position, destination_id, initial_face_vector, settings_go_threshold, settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)  
+Initialize moves from a source position to destination node inside the created map and using given threshold and initial face vector as game object initial face direction and path calculate settings, the optional value will fall back to module default values.    
+#### **arguments:**  
+* `vector3` source_position  
+* `number` destination_id
+* `optional vecotr3` initial_face_vector
+* `optional number` settings_go_threshold
+* `optional number` settings_path_curve_tightness
+* `optional number` settings_path_curve_roundness
+* `optional number` settings_path_curve_max_distance_from_corner
+* `optional boolean` settings_allow_enter_on_route  
+#### **return:**  
+* `table` special movement data  
+> **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one.  
+---  
 ### move_player(current_position, speed, move_data)  
-calculate movements from current_position of the game object inside the created map considering given speed and using last calculated movement data  
-**arguments:** current_position as vector3, speed as number, move_data as table  
-**return:** new movement data as table, move result table like { `position`: next position of game object as vector3, `rotation`: next rotation of game object as quat, `is_reached`: is game object reached the destination as boolean }  
-> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
-
+Calculate movements from current position of the game object inside the created map considering given speed, using last calculated movement data.  
+#### **arguments:**  
+* `vector3` current_position
+* `number` speed
+* `table` move_data  
+#### **return:**  
+* `table` new movement data
+* `table` move result
+  * `position`: `vector3` next position of game object
+  * `rotation`: `quat` next rotation of game object
+  * `is_reached`: `boolean` is game object reached the destination  
+> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` and rotation to `rotation` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
+---  
 ### debug_set_properties(node_color, route_color, draw_scale)  
 set debug drawing properties  
-**arguments:** node_color as vector4, route_color as vector4, draw_scale as number   
-
+#### **arguments:**  
+* `optional vector4` node_color `[vector4(1, 0, 1, 1)]`
+* `optional vector4` route_color `[vector4(0, 1, 0, 1)]`
+* `optional number` draw_scale `[5]`  
+---  
 ### debug_draw_map_nodes(is_show_ids)  
-debug draw all map nodes and choose to show node ids or not  
-**arguments:** is_show_ids as boolean  
-
+Debug draw all map nodes and choose to show node ids or not.  
+#### **arguments:**  
+* `optional boolean` is_show_ids `[false]`   
+---  
 ### debug_draw_map_routes()  
-debug draw all map routes  
+Debug draw all map routes.  
 
-### debug_draw_player_move(movement_data, color)
-debug draw player route to destination with given color  
-**arguments:** movement_data as table, color as vector4    
+---  
+### debug_draw_player_move(movement_data, color, is_show_intersection)
+Debug draw player specific path with given color.  
+#### **arguments:**  
+* `table` movement_data
+* `vector4` color
+* `optional boolean` is_show_intersection `[false]` 
+---  

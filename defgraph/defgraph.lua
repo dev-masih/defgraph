@@ -712,7 +712,7 @@ function M.move_initialize(source_position, destination_id, initial_face_vector,
 end
 
 -- global: Calculate movements from current position of the game object inside the created map
--- considering given speed, using last calculated movement data
+-- considering given speed, using last calculated movement data.
 -- arguments: current_position as vector3
 --            speed as number
 --            move_data as table
