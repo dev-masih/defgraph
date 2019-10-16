@@ -6,7 +6,7 @@
 local M = {}
 
 local map_node_list = {}
--- map_node_list[node_id] = { position, type }
+-- map_node_list[node_id] = { position, type, neighbor_id:{} }
 
 local map_route_list = {}
 -- map_route_list[from_id][to_id] = { a, b, c, distance }
@@ -73,29 +73,32 @@ function M.map_update_node_position(node_id, position)
     if map_node_list[node_id] ~= nil then
         map_node_list[node_id].position = position
     end
-    for to_id, route in pairs(map_route_list[node_id]) do
-        -- line equation: ax + by + c = 0
-        local a, b, c
-        local from_pos = map_node_list[node_id].position
-        local to_pos = map_node_list[to_id].position
-        if from_pos.x ~= to_pos.x then
-            --non vertical
-            a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
-            b = 1
-            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
-        else
-            --vertical
-            a = 1
-            b = 0
-            c = -from_pos.x
+    for from_id, routes in pairs(map_route_list) do
+        for to_id, route in pairs(routes) do
+            if from_id == node_id or to_id == node_id then
+                -- line equation: ax + by + c = 0
+                local a, b, c
+                local from_pos = map_node_list[from_id].position
+                local to_pos = map_node_list[to_id].position
+                if from_pos.x ~= to_pos.x then
+                    --non vertical
+                    a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
+                    b = 1
+                    c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
+                else
+                    --vertical
+                    a = 1
+                    b = 0
+                    c = -from_pos.x
+                end
+                map_route_list[from_id][to_id] = {
+                    a = a,
+                    b = b,
+                    c = c,
+                    distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
+                }
+            end
         end
-        map_route_list[node_id][to_id] = {
-            a = a,
-            b = b,
-            c = c,
-            distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
-        }
-        map_route_list[to_id][node_id] = map_route_list[node_id][to_id]
     end
     -- map shape is changed
     map_change_iterator = map_change_iterator + 1
@@ -131,46 +134,77 @@ end
 -- local: Add one way route from one node to another.
 -- arguments: source_id as number
 --            destination_id as number
-local function map_add_oneway_route(source_id, destination_id)
+--            route_info as table
+-- return: route info entry as table
+local function map_add_oneway_route(source_id, destination_id, route_info)
     if map_route_list[source_id] == nil then
         map_route_list[source_id] = {}
     end
 
     if map_route_list[source_id][destination_id] == nil then
-        -- line equation: ax + by + c = 0
-        local a, b, c
-        local from_pos = map_node_list[source_id].position
-        local to_pos = map_node_list[destination_id].position
-        if from_pos.x ~= to_pos.x then
-            --non vertical
-            a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
-            b = 1
-            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
+        if route_info == nil then
+            -- line equation: ax + by + c = 0
+            local a, b, c
+            local from_pos = map_node_list[source_id].position
+            local to_pos = map_node_list[destination_id].position
+            if from_pos.x ~= to_pos.x then
+                --non vertical
+                a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
+                b = 1
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
+            else
+                --vertical
+                a = 1
+                b = 0
+                c = -from_pos.x
+            end
+            map_route_list[source_id][destination_id] = {
+                a = a,
+                b = b,
+                c = c,
+                distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
+            }
         else
-            --vertical
-            a = 1
-            b = 0
-            c = -from_pos.x
+            map_route_list[source_id][destination_id] = route_info
         end
-        map_route_list[source_id][destination_id] = {
-            a = a,
-            b = b,
-            c = c,
-            distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
-        }
+
+        if route_info == nil then
+            local is_found = false
+            for i = 1, #map_node_list[source_id].neighbor_id do
+                if map_node_list[source_id].neighbor_id[i] == destination_id then
+                    is_found = true
+                    break
+                end
+            end
+            if is_found == false then
+                table.insert(map_node_list[source_id].neighbor_id, destination_id)
+            end
+
+            is_found = false
+            for i = 1, #map_node_list[destination_id].neighbor_id do
+                if map_node_list[destination_id].neighbor_id[i] == source_id then
+                    is_found = true
+                    break
+                end
+            end
+            if is_found == false then
+                table.insert(map_node_list[destination_id].neighbor_id, source_id)
+            end
+        end
     end
+
+    return map_route_list[source_id][destination_id]
 end
 
 -- local: Update node type parameter.
 -- arguments: node_id as number
 local function map_update_node_type(node_id)
-    if map_route_list[node_id] ~= nil then
-        local size = table_size(map_route_list[node_id])
-        if size == 0 then
+    if map_node_list[node_id] ~= nil then
+        if #map_node_list[node_id].neighbor_id == 0 then
             map_node_list[node_id].type = NODETYPE.single
-        elseif size == 1 then
+        elseif #map_node_list[node_id].neighbor_id == 1 then
             map_node_list[node_id].type = NODETYPE.deadend
-        elseif size > 1 then
+        elseif #map_node_list[node_id].neighbor_id > 1 then
             map_node_list[node_id].type = NODETYPE.intersection
         end
     end
@@ -185,6 +219,20 @@ local function map_remove_oneway_route(source_id, destination_id)
         if table_size(map_route_list[source_id]) == 0 then
             map_route_list[source_id] = nil
         end
+        if map_route_list[destination_id] == nil or map_route_list[destination_id][source_id] == nil then
+            for i = 1, #map_node_list[destination_id].neighbor_id do
+                if map_node_list[destination_id].neighbor_id[i] == source_id then
+                    table.remove(map_node_list[destination_id].neighbor_id, i)
+                    break
+                end
+            end
+            for i = 1, #map_node_list[source_id].neighbor_id do
+                if map_node_list[source_id].neighbor_id[i] == destination_id then
+                    table.remove(map_node_list[source_id].neighbor_id, i)
+                    break
+                end
+            end
+        end
     end
 end
 
@@ -194,22 +242,28 @@ end
 function M.map_add_node(position)
     map_node_id_iterator = map_node_id_iterator + 1
     local node_id = map_node_id_iterator
-    map_node_list[node_id] = { position = vmath.vector3(position.x, position.y, 0), type = NODETYPE.single }
+    map_node_list[node_id] = { position = vmath.vector3(position.x, position.y, 0), type = NODETYPE.single, neighbor_id = {} }
     map_change_iterator = map_change_iterator + 1
     return node_id
 end
 
--- global: Adding a two-way route between two nodes.
+-- global: Adding a two-way route between two nodes. you can set it as one way or two way
 -- arguments: source_id as number
 --            destination_id as number
-function M.map_add_route(source_id, destination_id)
+--            is_one_way as optional boolean [false]
+function M.map_add_route(source_id, destination_id, is_one_way)
+    if is_one_way == nil then
+        is_one_way = false
+    end
     if map_node_list[source_id] == nil 
     or map_node_list[destination_id] == nil
     or source_id == destination_id then
         return
     end
-    map_add_oneway_route(source_id, destination_id)
-    map_add_oneway_route(destination_id, source_id)
+    local route_info = map_add_oneway_route(source_id, destination_id, nil)
+    if is_one_way == false then
+        map_add_oneway_route(destination_id, source_id, route_info)
+    end
     map_update_node_type(source_id)
     map_update_node_type(destination_id)
     map_change_iterator = map_change_iterator + 1
@@ -218,14 +272,20 @@ end
 -- global: Removing an existing route between two nodes.
 -- arguments: source_id as number
 --            destination_id as number
-function M.map_remove_route(source_id, destination_id)
+--            is_remove_oneway as optional boolean [false]
+function M.map_remove_route(source_id, destination_id, is_remove_oneway)
+    if is_remove_oneway == nil then
+        is_remove_oneway = false
+    end
     if map_node_list[source_id] == nil
     or map_node_list[destination_id] == nil
     or source_id == destination_id then
         return
     end
     map_remove_oneway_route(source_id, destination_id)
-    map_remove_oneway_route(destination_id, source_id)
+    if is_remove_oneway == false then
+        map_remove_oneway_route(destination_id, source_id)
+    end
     map_update_node_type(source_id)
     map_update_node_type(destination_id)
     map_change_iterator = map_change_iterator + 1
@@ -283,9 +343,12 @@ end
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-            if from_id < to_id then
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_route_color } )
-            end
+            msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_route_color } )
+
+            local arrow_postion = 3 / 4 * map_node_list[to_id].position + map_node_list[from_id].position / 4
+
+            msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = arrow_postion + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_route_color } )
+            msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = arrow_postion + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_route_color } )
         end
     end
 end
@@ -338,11 +401,12 @@ local function calculate_to_nearest_route(position)
     local min_from_id, min_to_id
     local min_near_pos_x, min_near_pos_y
     local min_dist = huge
+    local already_calculated = {}
 
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-            if from_id < to_id then
-                
+            if already_calculated[from_id] == nil or already_calculated[from_id][to_id] == nil then
+
                 local is_between, near_pos_x, near_pos_y, dist, dist_from_id, dist_to_id
                 local from_pos = map_node_list[from_id].position
                 local to_pos = map_node_list[to_id].position
@@ -406,7 +470,12 @@ local function calculate_to_nearest_route(position)
                     min_from_id = from_id
                     min_to_id = to_id
                 end
-                
+
+                if already_calculated[to_id] == nil then
+                    already_calculated[to_id] = {}
+                end
+                already_calculated[to_id][from_id] = true
+
             end
         end
     end
@@ -479,11 +548,13 @@ local function calculate_path(start_id, finish_id)
             break;
         end
 
-        for to_id, neighbor in pairs(map_route_list[smallest]) do
-            local alt = distances[smallest] + neighbor.distance
-            if alt < distances[to_id] then
-                distances[to_id] = alt;
-                previous[to_id] = smallest;
+        if map_route_list[smallest] ~= nil then
+            for to_id, neighbor in pairs(map_route_list[smallest]) do
+                local alt = distances[smallest] + neighbor.distance
+                if alt < distances[to_id] then
+                    distances[to_id] = alt;
+                    previous[to_id] = smallest;
+                end
             end
         end
 
@@ -622,8 +693,15 @@ local function move_internal_initialize(source_position, destination_id, setting
             settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner
         }
     else
-        local from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_id)
-        local to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
+        local from_path = nil
+        local to_path = nil
+
+        if map_route_list[near_result.route_to_id] ~= nil and map_route_list[near_result.route_to_id][near_result.route_from_id] ~= nil then
+            from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_id)
+        end
+        if map_route_list[near_result.route_from_id] ~= nil and map_route_list[near_result.route_from_id][near_result.route_to_id] ~= nil then
+            to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_id)
+        end
 
         local position_list = {}
         table.insert(position_list, source_position)
@@ -632,9 +710,20 @@ local function move_internal_initialize(source_position, destination_id, setting
             table.insert(position_list, near_result.position_on_route)
         end
         
-        if from_path ~= nil and to_path ~= nil then
-            local from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
-            local to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
+        if from_path ~= nil or to_path ~= nil then
+            local from_distance, to_distance
+
+            if from_path == nil then
+                from_distance = huge
+            else
+                from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
+            end
+
+            if to_path == nil then
+                to_distance = huge
+            else
+                to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
+            end
 
             if from_distance <= to_distance then
                 table.insert(position_list, map_node_list[near_result.route_from_id].position)
