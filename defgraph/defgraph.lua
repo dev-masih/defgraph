@@ -252,7 +252,7 @@ function M.map_add_node(position)
     return node_id
 end
 
--- global: Adding a two-way route between two nodes. you can set it as one way or two way
+-- global: Adding a two-way route between two nodes, you can set it as one way or two way.
 -- arguments: source_id as number
 --            destination_id as number
 --            is_one_way as optional boolean [false]
@@ -274,7 +274,7 @@ function M.map_add_route(source_id, destination_id, is_one_way)
     map_change_iterator = map_change_iterator + 1
 end
 
--- global: Removing an existing route between two nodes.
+-- global: Removing an existing route between two nodes, you can set it to remove just one way or both ways.
 -- arguments: source_id as number
 --            destination_id as number
 --            is_remove_one_way as optional boolean [false]

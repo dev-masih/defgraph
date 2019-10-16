@@ -2,8 +2,11 @@
 
 * Added ability for game objects to have curved corner paths.
 * Added ability to track game object rotation as move result.
+* Added only one ways routes, and added separate arguments `two_way_route_color` and `one_way_route_color` in `debug_draw_map_nodes` function.  
 * Added separate examples for static and dynamic map nodes.  
 * Added documentation for module settings.  
+* Added `is_one_way` argument to `map_add_route` function, to able to add just one way route.  
+* Added `is_remove_one_way` argument to `map_remove_route` function, to able to remove just one way route or both between two nodes.  
 * Added `map_remove_node` function to remove a node and it's connected routes to it.  
 * Added `map_update_node_position` function to update node positions. now entire map can move dynamically.  
 * Added `map_set_properties` function to replace module default settings.  

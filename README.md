@@ -86,17 +86,19 @@ Adding a node at the given position (position.z will get ignored).
 #### **return:**  
 * `number` Newly added node id  
 ---  
-### map_add_route(source_id, destination_id)  
-Adding a two-way route between two nodes.  
+### map_add_route(source_id, destination_id, is_one_way)  
+Adding a two-way route between two nodes, you can set it as one way or two way.  
 #### **arguments:**  
 * `number` source_id  
 * `number` destination_id  
+* `optional boolean` is_one_way `[false]`  
 ---  
-### map_remove_route(source_id, destination_id)  
-Removing an existing route between two nodes.  
+### map_remove_route(source_id, destination_id, is_remove_one_way)  
+Removing an existing route between two nodes, you can set it to remove just one way or both ways.  
 #### **arguments:**  
 * `number` source_id  
 * `number` destination_id  
+* `optional boolean` is_remove_one_way `[false]`  
 ---  
 ### map_remove_node(node_id)  
 Removing an existing node, attached routes to this node will remove.  
@@ -110,7 +112,7 @@ Update an existing node position.
 * `vector3` position  
 ---  
 ### move_initialize(source_position, destination_id, initial_face_vector, settings_go_threshold, settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)  
-Initialize moves from a source position to destination node inside the created map and using given threshold and initial face vector as game object initial face direction and path calculate settings, the optional value will fall back to module default values.    
+Initialize moves from a source position to destination node inside the created map and using given threshold and initial face vector as game object initial face direction and path calculate settings, **the optional value will fall back to module default values.**    
 #### **arguments:**  
 * `vector3` source_position  
 * `number` destination_id
@@ -138,11 +140,12 @@ Calculate movements from current position of the game object inside the created 
   * `is_reached`: `boolean` is game object reached the destination  
 > **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set go position to `position` and rotation to `rotation` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
 ---  
-### debug_set_properties(node_color, route_color, draw_scale)  
+### debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)  
 set debug drawing properties  
 #### **arguments:**  
 * `optional vector4` node_color `[vector4(1, 0, 1, 1)]`
-* `optional vector4` route_color `[vector4(0, 1, 0, 1)]`
+* `optional vector4` two_way_route_color `[vector4(0, 1, 0, 1)]`
+* `optional vector4` one_way_route_color `[vector4(0, 1, 1, 1)]`
 * `optional number` draw_scale `[5]`  
 ---  
 ### debug_draw_map_nodes(is_show_ids)  
