@@ -35,32 +35,32 @@ Then you can use the DefGraph functions using this module.
 [Official Defold game asset page for DefGraph](https://defold.com/assets/defgraph/)
 
 ## Module Settings  
-There are several parameters for module to works with, you can change these parameters one time for entire module with `map_set_properties` and let each game object inharate those or set these parameters or each game object with `move_initialize` function. If you choose to not change any of them module uses it's own default values.  
+There are several parameters for the module to works with, you can change these parameters one time for the entire module with `map_set_properties` and let each game object inherit those or set these parameters or each game object with `move_initialize` function. If you choose to not change any of them, the module uses it's own default values.  
 #### **Threshold:**  
-This `number` value used as detection of is an object is on a route or not. It's better to use bigger value as object speed is getting higher to have better movement experience. module default value is `1`. minimum for this value should be `1`.  
+This `number` value used as detection that an object is on a route or not. It's better to use a bigger value as object speed is getting higher to have better movement experience. The module default value is `1` and minimum for this value should be `1`.  
 #### **Path Curve Tightness:**  
-This `number` value determine how tight a turn on path should be. module defaulf value is `4`. minimum for this value should be `2`.  
+This `number` value determines how tight a turn on the path should be. The module default value is `4` and minimum for this value should be `2`.  
 
 <img src="examples/raw/tness_2.jpg" alt="Tightness 2"/> | <img src="examples/raw/tness_3.jpg" alt="Tightness 3"/> | <img src="examples/raw/tness_8.jpg" alt="Tightness 8"/>
 :-------------: | :-------------: | :-------------:
 Tightness: 2 | Tightness: 3 | Tightness: 8  
 
 #### **Path Curve Roundness:**  
-This `number` value determine how round a turn on path should be. module defaulf value is `3`. If this value equals to `0` the path will not have any curve and value of `settings_path_curve_tightness` and `settings_path_curve_max_distance_from_corner` will get ignored. higher value for roundness with need more processing power specially when your map nodes are dynamically moving.  
+This `number` value determines how round a turn on a path should be. The module default value is `3`. If this value equals `0` the path will not have any curve and the value of `settings_path_curve_tightness` and `settings_path_curve_max_distance_from_corner` will get ignored. The higher value for roundness will need more processing power especially when your map nodes are dynamically moving.  
 
 <img src="examples/raw/round_0.jpg" alt="Roundness 0"/> | <img src="examples/raw/round_1.jpg" alt="Roundness 1"/> | <img src="examples/raw/round_5.jpg" alt="Roundness 5"/>
 :-------------: | :-------------: | :-------------:
 Roundness: 0 | Roundness: 1 | Roundness: 5  
 
 #### **Path Curve Max Distance From Corner:**  
-This `number` value determine maximum value of a turn distance to a corner. module defaulf value is `10`. If this value equals to `0` the path will not have any curve but you should set `settings_path_curve_roundness` to `0` if this is what you want.  
+This `number` value determines the maximum value of a turn distance to a corner. The module default value is `10`. If this value equals `0` the path will not have any curve but you should set `settings_path_curve_roundness` to `0` if this is what you want.  
 
 <img src="examples/raw/max_10.jpg" alt="Max 10"/> | <img src="examples/raw/max_30.jpg" alt="Max 30"/> | <img src="examples/raw/max_50.jpg" alt="Max 50"/>
 :-------------: | :-------------: | :-------------:
 Max: 10 | Max: 30 | Max: 50  
 
 #### **Allow Enter on Route:**  
-This `boolean` value determine is a game object allow entering a map in middle of route or is should enter it from corners only. module defaulf value is `true`.  
+This `boolean` value determines is a game object can enter a map in the middle of a route or is should enter it from corners only. The module default value is `true`.  
 
 <img src="examples/raw/allow_false.jpg" alt="False"/> | <img src="examples/raw/allow_true.jpg" alt="True"/>
 :-------------: | :-------------:
@@ -86,7 +86,7 @@ Adding a node at the given position (position.z will get ignored).
 #### **return:**  
 * `number` Newly added node id  
 
-> **Note:** Single nodes with no route attached to them are not participating in any routing calculations and it's better to remove them if you'r not using them.  
+> **Note:** Single nodes with no route attached to them are not participating in any routing calculations and it's better to remove them if you are not using them.  
 ---  
 ### map_add_route(source_id, destination_id, is_one_way)  
 Adding a two-way route between two nodes, you can set it as one way or two way.  
@@ -95,7 +95,7 @@ Adding a two-way route between two nodes, you can set it as one way or two way.
 * `number` destination_id  
 * `optional boolean` is_one_way `[false]`  
 
-> **Note:** If you never need to get pathfinding result at two way it's better to use a one way path beacuse it will be a bit computationally lighter.  
+> **Note:** If you never need to get pathfinding result in two way it's better to use a one-way path because it will be a bit computationally lighter.  
 ---  
 ### map_remove_route(source_id, destination_id, is_remove_one_way)  
 Removing an existing route between two nodes, you can set it to remove just one way or both ways.  
