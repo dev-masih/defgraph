@@ -540,15 +540,15 @@ local function calculate_path(start_id, finish_id)
 
                 table.insert(path, 1, { id = smallest, distance = path_distance })
                 
-                if map_route_list[smallest] == nil then
+                if map_route_list[previous[smallest]] == nil then
                     return nil
                 end
 
-                if map_route_list[smallest][previous[smallest]] == nil then
+                if map_route_list[previous[smallest]][smallest] == nil then
                     return nil
                 end
 
-                path_distance = path_distance + map_route_list[smallest][previous[smallest]].distance
+                path_distance = path_distance + map_route_list[previous[smallest]][smallest].distance
                 smallest = previous[smallest];
             end
             table.insert(path, 1, { id = smallest, distance = path_distance })
