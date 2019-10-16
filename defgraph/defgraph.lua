@@ -354,7 +354,7 @@ function M.debug_draw_map_routes()
             else
                 msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
                 
-                local arrow_postion = 5 / 6 * map_node_list[to_id].position + map_node_list[from_id].position / 6
+                local arrow_postion = 4 / 5 * map_node_list[to_id].position + map_node_list[from_id].position / 5
                 msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(3, 3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
                 msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(-3, -3, 0), color = debug_one_way_route_color } )
                 msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(3, 3, 0), color = debug_one_way_route_color } )
