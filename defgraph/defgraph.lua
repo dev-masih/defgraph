@@ -41,6 +41,7 @@ local pow = math.pow
 local abs = math.abs
 local huge = math.huge
 local pi = math.pi
+local atan2 = math.atan2
 
 -- global: Set the main path and move calculation properties, nil inputs will fall back to default values.
 -- arguments: settings_go_threshold as optional number [1]
@@ -899,10 +900,7 @@ function M.move_player(current_position, speed, move_data)
         rotation = nil
     else
         local rotation_vector = vmath.lerp(0.2 * speed, move_data.current_face_vector, direction_vector)
-        rotation = vmath.quat_from_to(move_data.initial_face_vector, rotation_vector)
-        if rotation.x ~= rotation.x then
-            rotation = vmath.quat_rotation_z(pi)
-        end
+        rotation = vmath.quat_rotation_z(atan2(rotation_vector.y, rotation_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         move_data.current_face_vector = rotation_vector
     end
     return move_data, {
