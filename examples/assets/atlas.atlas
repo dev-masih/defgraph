@@ -1,0 +1,9 @@
+images {
+  image: "/examples/raw/dot.png"
+}
+images {
+  image: "/examples/raw/pointy_dot.png"
+}
+margin: 0
+extrude_borders: 2
+inner_padding: 0

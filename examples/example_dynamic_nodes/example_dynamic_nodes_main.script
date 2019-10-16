@@ -1,0 +1,70 @@
+-- require defgraph
+local defgraph = require("defgraph.defgraph")
+
+function init(self)
+    msg.post(".", "acquire_input_focus")
+    
+    -- change map properties
+    defgraph.map_set_properties(15, 3, 1, 100, true)
+
+    self.node_ids = {}
+    self.node_positions = {}
+    self.node_goas_up = {}
+
+    -- defining graph nodes of the map
+    local is_up = true
+    local start_position = vmath.vector3(100, 200, 0)
+    for i = 1, 36 do
+        if is_up then
+            start_position = start_position + vmath.vector3(20, 20, 0)
+        else
+            start_position = start_position + vmath.vector3(20, -20, 0)
+        end
+
+        if start_position.y >= 400 then
+            is_up = false
+        elseif start_position.y <= 200 then
+            is_up = true
+        end
+
+        table.insert(self.node_ids, defgraph.map_add_node(start_position))
+        table.insert(self.node_positions, start_position)
+        table.insert(self.node_goas_up, is_up)
+    end
+
+    -- defining routes between nodes
+    for i = 1, #self.node_ids - 1 do
+        defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1], true)
+    end
+end
+
+function on_input(self, action_id, action)
+    if action_id == hash("left_click") and action.pressed then
+        factory.create("#factory", vmath.vector3(action.x, action.y, 0), nil, nil, 0.3)
+    end
+end
+
+function update(self, dt)
+    for i = 1, 36 do
+        if self.node_goas_up[i] then
+            self.node_positions[i] = self.node_positions[i] + vmath.vector3(0, 1, 0)
+            if self.node_positions[i].y >= 400 then
+                self.node_positions[i].y = 400
+                self.node_goas_up[i] = false
+            end
+        else
+            self.node_positions[i] = self.node_positions[i] - vmath.vector3(0, 1, 0)
+            if self.node_positions[i].y <= 200 then
+                self.node_positions[i].y = 200
+                self.node_goas_up[i] = true
+            end
+        end
+        defgraph.map_update_node_position(self.node_ids[i], self.node_positions[i])
+    end
+
+    -- draw debug info of nodes and routes
+    defgraph.debug_draw_map_routes()
+
+    msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 620, 0) } )
+    msg.post("@render:", "draw_text", { text = "left click: deploy dot", position = vmath.vector3(20, 600, 0) } )
+end

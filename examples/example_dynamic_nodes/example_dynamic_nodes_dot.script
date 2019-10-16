@@ -1,0 +1,30 @@
+-- require defgraph
+local defgraph = require("defgraph.defgraph")
+
+function init(self)
+	-- initilize variables
+	local my_position = go.get_position()
+	local destination_id = 36
+	self.speed = 200.0
+	
+	-- initialize movement for go inside given map
+	self.movement_data = defgraph.move_initialize(my_position, destination_id, vmath.vector3(0, 1, 0))
+end
+
+function update(self, dt)
+	-- move go inside given map and update move_data
+	local my_position = go.get_position()
+	self.movement_data, self.move_result = defgraph.move_player(my_position, self.speed * dt, self.movement_data)
+
+	-- update go postion based of returned result
+	go.set_position(self.move_result.position)
+
+	-- update go rotation based of returned result
+	go.set_rotation(self.move_result.rotation)
+
+	-- you can check if go reached to the destination
+	if self.move_result.is_reached then
+		print("I'm at destination!")
+		go.delete()
+	end
+end

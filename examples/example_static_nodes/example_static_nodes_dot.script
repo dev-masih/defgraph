@@ -14,7 +14,7 @@ end
 function update(self, dt)
 	-- move go inside given map and update move_data
 	local my_position = go.get_position()
-	self.movement_data, self.move_result = defgraph.move_player(my_position, self.speed * dt, 1, self.movement_data)
+	self.movement_data, self.move_result = defgraph.move_player(my_position, self.speed * dt, self.movement_data)
 
 	-- update go postion based of returned result
 	go.set_position(self.move_result.position)
@@ -22,6 +22,7 @@ function update(self, dt)
 	-- you can check if go reached to the destination
 	if self.move_result.is_reached then
 		print("I'm at destination!")
+		go.delete()
 	end
 	
 	-- debug draw movement_data with specific color
