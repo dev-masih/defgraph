@@ -98,6 +98,11 @@ Removing an existing route between two nodes.
 * `number` source_id  
 * `number` destination_id  
 ---  
+### map_remove_node(node_id)  
+Removing an existing node, attached routes to this node will remove.  
+#### **arguments:**  
+* `number` node_id   
+---  
 ### map_update_node_position(node_id, position)  
 Update an existing node position.  
 #### **arguments:**  
