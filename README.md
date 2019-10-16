@@ -85,6 +85,8 @@ Adding a node at the given position (position.z will get ignored).
 * `vector3` position  
 #### **return:**  
 * `number` Newly added node id  
+
+> **Note:** Single nodes with no route attached to them are not participating in any routing calculations and it's better to remove them if you'r not using them.  
 ---  
 ### map_add_route(source_id, destination_id, is_one_way)  
 Adding a two-way route between two nodes, you can set it as one way or two way.  
@@ -92,6 +94,8 @@ Adding a two-way route between two nodes, you can set it as one way or two way.
 * `number` source_id  
 * `number` destination_id  
 * `optional boolean` is_one_way `[false]`  
+
+> **Note:** If you never need to get pathfinding result at two way it's better to use a one way path beacuse it will be a bit computationally lighter.  
 ---  
 ### map_remove_route(source_id, destination_id, is_remove_one_way)  
 Removing an existing route between two nodes, you can set it to remove just one way or both ways.  
