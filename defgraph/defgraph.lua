@@ -231,6 +231,25 @@ function M.map_remove_route(source_id, destination_id)
     map_change_iterator = map_change_iterator + 1
 end
 
+-- global: Removing an existing node, attached routes to this node will remove.
+-- arguments: node_id as number
+function M.map_remove_node(node_id)
+    if map_node_list[node_id] == nil then
+        return
+    end
+    for from_id, routes in pairs(map_route_list) do
+        for to_id, route in pairs(routes) do
+            if from_id == node_id or to_id == node_id then
+                map_remove_oneway_route(from_id, to_id)
+                map_update_node_type(from_id)
+                map_update_node_type(to_id)
+            end
+        end
+    end
+    map_node_list[node_id] = nil
+    map_change_iterator = map_change_iterator + 1
+end
+
 -- global: Debug draw all map nodes and choose to show node ids or not.
 -- arguments: is_show_ids as optional boolean [false]
 function M.debug_draw_map_nodes(is_show_ids)

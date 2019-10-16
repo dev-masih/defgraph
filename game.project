@@ -1,5 +1,6 @@
 [project]
 title = DefGraph
+version = 3.0
 
 [library]
 include_dirs = defgraph
@@ -8,7 +9,7 @@ include_dirs = defgraph
 game_binding = /examples/main.input_bindingc
 
 [bootstrap]
-main_collection = /examples/example_dynamic_nodes/example_dynamic_nodes_main.collectionc
+main_collection = /examples/example_static_nodes/example_static_nodes_main.collectionc
 
 [script]
 shared_state = 1
