@@ -24,7 +24,8 @@ local NODETYPE = {
 
 -- local: color vectors and scale of debug drawing
 local debug_node_color = vmath.vector4(1, 0, 1, 1)
-local debug_route_color = vmath.vector4(0, 1, 0, 1)
+local debug_two_way_route_color = vmath.vector4(0, 1, 0, 1)
+local debug_one_way_route_color = vmath.vector4(0, 1, 1, 1)
 local debug_draw_scale = 5
 
 -- local: main settings
@@ -106,14 +107,18 @@ end
 
 -- global: Set the debug drawing properties, nil inputs will fall back to default values.
 -- arguments: node_color as optional vector4 [vector4(1, 0, 1, 1)]
---            route_color as optional vector4 [vector4(0, 1, 0, 1)]
+--            two_way_route_color as optional vector4 [vector4(0, 1, 0, 1)]
+--            one_way_route_color as optional vector4 [vector4(0, 1, 1, 1)]
 --            draw_scale as optional number [5]
-function M.debug_set_properties(node_color, route_color, draw_scale)
+function M.debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
     if node_color ~= nil then
         debug_node_color = node_color
     end
-    if route_color ~= nil then
-        debug_route_color = route_color
+    if two_way_route_color ~= nil then
+        debug_two_way_route_color = two_way_route_color
+    end
+    if one_way_route_color ~= nil then
+        debug_one_way_route_color = one_way_route_color
     end
     if draw_scale ~= nil then
         debug_draw_scale = draw_scale
@@ -272,10 +277,10 @@ end
 -- global: Removing an existing route between two nodes.
 -- arguments: source_id as number
 --            destination_id as number
---            is_remove_oneway as optional boolean [false]
-function M.map_remove_route(source_id, destination_id, is_remove_oneway)
-    if is_remove_oneway == nil then
-        is_remove_oneway = false
+--            is_remove_one_way as optional boolean [false]
+function M.map_remove_route(source_id, destination_id, is_remove_one_way)
+    if is_remove_one_way == nil then
+        is_remove_one_way = false
     end
     if map_node_list[source_id] == nil
     or map_node_list[destination_id] == nil
@@ -283,7 +288,7 @@ function M.map_remove_route(source_id, destination_id, is_remove_oneway)
         return
     end
     map_remove_oneway_route(source_id, destination_id)
-    if is_remove_oneway == false then
+    if is_remove_one_way == false then
         map_remove_oneway_route(destination_id, source_id)
     end
     map_update_node_type(source_id)
@@ -343,12 +348,18 @@ end
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-            msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_route_color } )
 
-            local arrow_postion = 3 / 4 * map_node_list[to_id].position + map_node_list[from_id].position / 4
-
-            msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = arrow_postion + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_route_color } )
-            msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = arrow_postion + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_route_color } )
+            if map_route_list[to_id] ~= nil and map_route_list[to_id][from_id] ~= nil then
+                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
+            else
+                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
+                
+                local arrow_postion = 5 / 6 * map_node_list[to_id].position + map_node_list[from_id].position / 6
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(3, 3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(-3, -3, 0), color = debug_one_way_route_color } )
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(3, 3, 0), color = debug_one_way_route_color } )
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, -3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
+            end
         end
     end
 end
