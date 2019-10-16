@@ -2,7 +2,12 @@
 
 * Added ability for game objects to have curved corner paths.
 * Added ability to track game object rotation as move result.
-* Added only one ways routes, and added separate arguments `two_way_route_color` and `one_way_route_color` in `debug_draw_map_nodes` function.  
+* Added only one ways routes, and added separate arguments `two_way_route_color` and `one_way_route_color` in `debug_draw_map_nodes` function. 
+  
+<img src="examples/raw/debug_draw_one_way_route.jpg" alt="one way route" style="max-width:100%;" />  
+
+In the above image green line is a two way path and light blue line is a one way path, a little square is placed on a one way route near destination, for example in this image the route is one way from node 5 to 6.
+
 * Added separate examples for static and dynamic map nodes.  
 * Added documentation for module settings.  
 * Added `is_one_way` argument to `map_add_route` function, to able to add just one way route.  
