@@ -6,10 +6,10 @@ version = 3.1
 include_dirs = defgraph
 
 [input]
-game_binding = /examples/main.input_bindingc
+game_binding = /examples/main.input_binding
 
 [bootstrap]
-main_collection = /examples/example_static_nodes/example_static_nodes_main.collectionc
+main_collection = /examples/example_static_nodes/example_static_nodes_main.collection
 
 [script]
 shared_state = 1
