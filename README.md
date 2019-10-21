@@ -170,7 +170,7 @@ Debug draw player specific path with given color.
 ---  
 
 ## Donations  
-If you really like this extention and want to support me, consider donating to me with BTC or ETH. All donations are optional and are greatly appreciated.  
+If you really like this extension and want to support me, consider donating to me with BTC or ETH. All donations are optional and are greatly appreciated 🙏.  
 
 BTC: 1EdDfXRuqnb5a8RmtT7ZnjGBcYeNzXLM3e  
 ETH: 0x99d3D5816e79bCfB2aE30d1e02f889C40800F141  
