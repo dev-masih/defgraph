@@ -559,7 +559,9 @@ local function calculate_path(start_id, finish_id)
                 path_distance = path_distance + map_route_list[previous[smallest]][smallest].distance
                 smallest = previous[smallest];
             end
-            table.insert(path, 1, { id = smallest, distance = path_distance })
+            if path_distance ~= 0 then
+                table.insert(path, 1, { id = smallest, distance = path_distance })
+            end
             break
         end
 
@@ -613,7 +615,7 @@ local function fetch_path(change_number, from_id, to_id)
 
     -- calculate path
     local path = calculate_path(from_id, to_id)
-    if path == nil then
+    if path == nil or #path == 0 then
         return nil
     end
     
