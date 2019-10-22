@@ -43,6 +43,13 @@ local huge = math.huge
 local pi = math.pi
 local atan2 = math.atan2
 
+-- global: routing types
+M.ROUTETYPE = {
+    onetime = 0,
+    shuffle = 1,
+    cycle = 2
+}
+
 -- global: Set the main path and move calculation properties, nil inputs will fall back to default values.
 -- arguments: settings_go_threshold as optional number [1]
 --            settings_path_curve_tightness as optional number [4]
@@ -676,51 +683,42 @@ end
 
 -- local: Initialize moves from source position to a node with an destination node inside the created map.
 -- arguments: source_position as vector3
---            destination_list as list of number
---            destination_index as number
---            settings_go_threshold as number
---            initial_face_vector as vector3
---            current_face_vector as vector3
---            settings_path_curve_tightness as number
---            settings_path_curve_roundness as number
---            settings_path_curve_max_distance_from_corner as number
---            settings_allow_enter_on_route as boolean
+--            move_data as table
 -- return: special movement data as table
-local function move_internal_initialize(source_position, destination_list, destination_index, settings_go_threshold, initial_face_vector
-    , current_face_vector, settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner
-    , settings_allow_enter_on_route)
+local function move_internal_initialize(source_position, move_data)
     local near_result = calculate_to_nearest_route(source_position)
-    if near_result == nil or #destination_list == 0 then
+    if near_result == nil or #move_data.destination_list == 0 then
         -- stay until something changes
         return {
             change_number = map_change_iterator,
-            destination_list = destination_list,
-            destination_index = destination_index,
+            destination_list = move_data.destination_list,
+            destination_index = move_data.destination_index,
+            route_type = move_data.route_type,
             path_index = 0,
             path = {},
-            initial_face_vector = initial_face_vector,
-            current_face_vector = current_face_vector,
-            settings_go_threshold = settings_go_threshold,
-            settings_path_curve_tightness = settings_path_curve_tightness,
-            settings_path_curve_roundness = settings_path_curve_roundness,
-            settings_allow_enter_on_route = settings_allow_enter_on_route,
-            settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner
+            initial_face_vector = move_data.initial_face_vector,
+            current_face_vector = move_data.current_face_vector,
+            settings_go_threshold = move_data.settings_go_threshold,
+            settings_path_curve_tightness = move_data.settings_path_curve_tightness,
+            settings_path_curve_roundness = move_data.settings_path_curve_roundness,
+            settings_allow_enter_on_route = move_data.settings_allow_enter_on_route,
+            settings_path_curve_max_distance_from_corner = move_data.settings_path_curve_max_distance_from_corner
         }
     else
         local from_path = nil
         local to_path = nil
 
         if map_route_list[near_result.route_to_id] ~= nil and map_route_list[near_result.route_to_id][near_result.route_from_id] ~= nil then
-            from_path = fetch_path(map_change_iterator, near_result.route_from_id, destination_list[destination_index])
+            from_path = fetch_path(map_change_iterator, near_result.route_from_id, move_data.destination_list[move_data.destination_index])
         end
         if map_route_list[near_result.route_from_id] ~= nil and map_route_list[near_result.route_from_id][near_result.route_to_id] ~= nil then
-            to_path = fetch_path(map_change_iterator, near_result.route_to_id, destination_list[destination_index])
+            to_path = fetch_path(map_change_iterator, near_result.route_to_id, move_data.destination_list[move_data.destination_index])
         end
 
         local position_list = {}
         table.insert(position_list, source_position)
 
-        if (near_result.distance > settings_go_threshold + 1) and settings_allow_enter_on_route then
+        if (near_result.distance > move_data.settings_go_threshold + 1) and move_data.settings_allow_enter_on_route then
             table.insert(position_list, near_result.position_on_route)
         end
         
@@ -753,12 +751,12 @@ local function move_internal_initialize(source_position, destination_list, desti
         end
 
         local new_position_list = {}
-        if settings_path_curve_roundness ~= 0 then
+        if move_data.settings_path_curve_roundness ~= 0 then
             table.insert(new_position_list, position_list[1])
 
             for i = 2, #position_list - 1 do
                 local partial_position_list, Q_before, R_after = process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1]
-                , settings_path_curve_roundness, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+                , move_data.settings_path_curve_roundness, move_data.settings_path_curve_tightness, move_data.settings_path_curve_max_distance_from_corner)
 
                 if i == 2 then
                     table.insert(new_position_list, Q_before)
@@ -780,17 +778,18 @@ local function move_internal_initialize(source_position, destination_list, desti
 
         return {
             change_number = map_change_iterator,
-            destination_list = destination_list,
-            destination_index = destination_index,
+            destination_list = move_data.destination_list,
+            destination_index = move_data.destination_index,
+            route_type = move_data.route_type,
             path_index = 1,
             path = new_position_list,
-            initial_face_vector = initial_face_vector,
-            current_face_vector = current_face_vector,
-            settings_go_threshold = settings_go_threshold,
-            settings_path_curve_tightness = settings_path_curve_tightness,
-            settings_path_curve_roundness = settings_path_curve_roundness,
-            settings_allow_enter_on_route = settings_allow_enter_on_route,
-            settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner
+            initial_face_vector = move_data.initial_face_vector,
+            current_face_vector = move_data.current_face_vector,
+            settings_go_threshold = move_data.settings_go_threshold,
+            settings_path_curve_tightness = move_data.settings_path_curve_tightness,
+            settings_path_curve_roundness = move_data.settings_path_curve_roundness,
+            settings_allow_enter_on_route = move_data.settings_allow_enter_on_route,
+            settings_path_curve_max_distance_from_corner = move_data.settings_path_curve_max_distance_from_corner
         }
     end
 end
@@ -800,6 +799,7 @@ end
 -- and path calculate settings, the optional value will fall back to their default values.
 -- arguments: source_position as vector3
 --            destination_list as list of number
+--            route_type as optional ROUTETYPE [ROUTETYPE.onetime]
 --            initial_face_vector as optional vecotr3
 --            settings_go_threshold as optional number
 --            settings_path_curve_tightness as optional number
@@ -807,8 +807,12 @@ end
 --            settings_path_curve_max_distance_from_corner as optional number
 --            settings_allow_enter_on_route as optional boolean
 -- return: special movement data as table
-function M.move_initialize(source_position, destination_list, initial_face_vector, settings_go_threshold
+function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_go_threshold
     , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
+
+    if route_type == nil then
+        route_type = M.ROUTETYPE.onetime
+    end
 
     if settings_go_threshold == nil then
         settings_go_threshold = settings_main_go_threshold
@@ -830,8 +834,23 @@ function M.move_initialize(source_position, destination_list, initial_face_vecto
         settings_allow_enter_on_route = settings_main_allow_enter_on_route
     end
 
-    return move_internal_initialize(source_position, destination_list, 1, settings_go_threshold, initial_face_vector, initial_face_vector
-    , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
+    local move_data = {
+        change_number = map_change_iterator,
+        destination_list = destination_list,
+        destination_index = 1,
+        route_type = route_type,
+        path_index = 0,
+        path = {},
+        initial_face_vector = initial_face_vector,
+        current_face_vector = initial_face_vector,
+        settings_go_threshold = settings_go_threshold,
+        settings_path_curve_tightness = settings_path_curve_tightness,
+        settings_path_curve_roundness = settings_path_curve_roundness,
+        settings_allow_enter_on_route = settings_allow_enter_on_route,
+        settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner
+    }
+
+    return move_internal_initialize(source_position, move_data)
 end
 
 -- global: Calculate movements from current position of the game object inside the created map
@@ -849,9 +868,7 @@ function M.move_player(current_position, speed, move_data)
 
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
-        move_data = move_internal_initialize(current_position, move_data.destination_list, move_data.destination_index, move_data.settings_go_threshold
-        , move_data.initial_face_vector , move_data.current_face_vector, move_data.settings_path_curve_tightness
-        , move_data.settings_path_curve_roundness , move_data.settings_path_curve_max_distance_from_corner, move_data.settings_allow_enter_on_route)
+        move_data = move_internal_initialize(current_position, move_data)
     end    
 
     local rotation
@@ -882,15 +899,22 @@ function M.move_player(current_position, speed, move_data)
 
             -- reached destination
             local is_reached = true
-            if distance(current_position, map_node_list[move_data.destination_list[move_data.destination_index]].position) > move_data.settings_go_threshold + 1 then
+            local destination_id = move_data.destination_list[move_data.destination_index]
+            if distance(current_position, map_node_list[destination_id].position) > move_data.settings_go_threshold + 1 then
                 is_reached = false
+            else
+                if move_data.destination_index < #move_data.destination_list then
+                    move_data.destination_index = move_data.destination_index + 1
+
+                    move_data = move_internal_initialize(current_position, move_data)
+                end
             end
 
             return move_data, {
                 position = current_position,
                 rotation = rotation,
                 is_reached = is_reached,
-                destination_id = move_data.destination_list[move_data.destination_index]
+                destination_id = destination_id
             }
         else
             -- go for next section
