@@ -905,9 +905,17 @@ function M.move_player(current_position, speed, move_data)
             if distance(current_position, map_node_list[destination_id].position) > move_data.settings_go_threshold + 1 then
                 is_reached = false
             else
-                if move_data.destination_index < #move_data.destination_list then
-                    move_data.destination_index = move_data.destination_index + 1
-
+                if move_data.route_type == M.ROUTETYPE.onetime then
+                    if move_data.destination_index < #move_data.destination_list then
+                        move_data.destination_index = move_data.destination_index + 1
+                        move_data = move_internal_initialize(current_position, move_data)
+                    end
+                elseif move_data.route_type == M.ROUTETYPE.cycle then
+                    if move_data.destination_index < #move_data.destination_list then
+                        move_data.destination_index = move_data.destination_index + 1
+                    else
+                        move_data.destination_index = 1
+                    end
                     move_data = move_internal_initialize(current_position, move_data)
                 end
             end
