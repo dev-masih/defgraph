@@ -843,7 +843,8 @@ end
 --         move result table {
 --              position as vector3,
 --              rotation as vector3,
---              is_reached as boolean }
+--              is_reached as boolean,
+--              destination_id as number }
 function M.move_player(current_position, speed, move_data)
 
     -- check for map updates
@@ -864,7 +865,8 @@ function M.move_player(current_position, speed, move_data)
         return move_data, { 
             position = current_position,
             rotation = rotation,
-            is_reached = false
+            is_reached = false,
+            destination_id = move_data.destination_list[move_data.destination_index]
         }
     end
 
@@ -887,7 +889,8 @@ function M.move_player(current_position, speed, move_data)
             return move_data, {
                 position = current_position,
                 rotation = rotation,
-                is_reached = is_reached
+                is_reached = is_reached,
+                destination_id = move_data.destination_list[move_data.destination_index]
             }
         else
             -- go for next section
@@ -909,7 +912,8 @@ function M.move_player(current_position, speed, move_data)
     return move_data, {
         position = (current_position +  direction_vector * speed),
         rotation = rotation,
-        is_reached = false
+        is_reached = false,
+        destination_id = move_data.destination_list[move_data.destination_index]
     }
 end
 

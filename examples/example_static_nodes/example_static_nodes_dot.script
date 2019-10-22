@@ -7,7 +7,7 @@ function init(self)
 	self.speed = 100.0
 	
 	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, { })
+	self.movement_data = defgraph.move_initialize(my_position, { 6 })
 end
 
 function update(self, dt)
@@ -17,11 +17,10 @@ function update(self, dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.move_result.position)
-
+	
 	-- you can check if go reached to the destination
 	if self.move_result.is_reached then
-		print("I'm at destination!")
-		-- go.delete()
+		print("I'm at destination id : " .. self.move_result.destination_id)
 	end
 	
 	-- debug draw movement_data with specific color
