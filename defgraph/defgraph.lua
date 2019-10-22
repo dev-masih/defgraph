@@ -800,16 +800,17 @@ end
 
 -- global: Initialize moves from a source position to destination node list inside the created
 -- map and using given threshold and initial face vector as game object initial face direction
--- and path calculate settings, the optional value will fall back to their default values.
+-- and path calculate settings considering the route type, the optional value will fall back 
+-- to their default values.
 -- arguments: source_position as vector3
 --            destination_list as list of number
 --            route_type as optional ROUTETYPE [ROUTETYPE.onetime]
---            initial_face_vector as optional vecotr3
---            settings_go_threshold as optional number
---            settings_path_curve_tightness as optional number
---            settings_path_curve_roundness as optional number
---            settings_path_curve_max_distance_from_corner as optional number
---            settings_allow_enter_on_route as optional boolean
+--            initial_face_vector as optional vecotr3 [nil]
+--            settings_go_threshold as optional number [settings_main_go_threshold]
+--            settings_path_curve_tightness as optional number [settings_main_path_curve_tightness]
+--            settings_path_curve_roundness as optional number [settings_main_path_curve_roundness]
+--            settings_path_curve_max_distance_from_corner as optional number [settings_main_path_curve_max_distance_from_corner]
+--            settings_allow_enter_on_route as optional boolean [settings_main_allow_enter_on_route]
 -- return: special movement data as table
 function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_go_threshold
     , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
