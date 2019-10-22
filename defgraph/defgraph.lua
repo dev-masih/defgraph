@@ -5,6 +5,8 @@
 
 local M = {}
 
+math.randomseed(os.time() - os.clock() * 1000)
+
 local map_node_list = {}
 -- map_node_list[node_id] = { position, type, neighbor_id:{} }
 
@@ -836,10 +838,19 @@ function M.move_initialize(source_position, destination_list, route_type, initia
         settings_allow_enter_on_route = settings_main_allow_enter_on_route
     end
 
+    local destination_id = 1
+    if route_type == M.ROUTETYPE.shuffle and #destination_list > 1 then
+        math.random(#destination_list)
+        math.random(#destination_list)
+        math.random(#destination_list)
+
+        destination_id = math.random(#destination_list)
+    end
+
     local move_data = {
         change_number = map_change_iterator,
         destination_list = destination_list,
-        destination_index = 1,
+        destination_index = destination_id,
         route_type = route_type,
         path_index = 0,
         path = {},
@@ -908,6 +919,15 @@ function M.move_player(current_position, speed, move_data)
                 if move_data.route_type == M.ROUTETYPE.onetime then
                     if move_data.destination_index < #move_data.destination_list then
                         move_data.destination_index = move_data.destination_index + 1
+                        move_data = move_internal_initialize(current_position, move_data)
+                    end
+                elseif move_data.route_type == M.ROUTETYPE.shuffle then
+                    if #move_data.destination_list > 1 then
+                        local new_destination_id = move_data.destination_index
+                        repeat
+                            new_destination_id = math.random(#move_data.destination_list)
+                        until new_destination_id ~= move_data.destination_index
+                        move_data.destination_index = new_destination_id
                         move_data = move_internal_initialize(current_position, move_data)
                     end
                 elseif move_data.route_type == M.ROUTETYPE.cycle then
