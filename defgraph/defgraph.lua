@@ -31,7 +31,7 @@ local debug_one_way_route_color = vmath.vector4(0, 1, 1, 1)
 local debug_draw_scale = 5
 
 -- local: main settings
-local settings_main_go_threshold = 1
+local settings_main_gameobject_threshold = 1
 local settings_main_path_curve_tightness = 4
 local settings_main_path_curve_roundness = 3
 local settings_main_path_curve_max_distance_from_corner = 10
@@ -53,15 +53,15 @@ M.ROUTETYPE = {
 }
 
 -- global: Set the main path and move calculation properties, nil inputs will fall back to default values.
--- arguments: settings_go_threshold as optional number [1]
+-- arguments: settings_gameobject_threshold as optional number [1]
 --            settings_path_curve_tightness as optional number [4]
 --            settings_path_curve_roundness as optional number [3]
 --            settings_path_curve_max_distance_from_corner as optional number [10]
 --            settings_allow_enter_on_route as optional boolean [true]
-function M.map_set_properties(settings_go_threshold, settings_path_curve_tightness, settings_path_curve_roundness
+function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness
     , settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
-    if settings_go_threshold ~= nil then
-        settings_main_go_threshold = settings_go_threshold
+    if settings_gameobject_threshold ~= nil then
+        settings_main_gameobject_threshold = settings_gameobject_threshold
     end
     if settings_path_curve_tightness ~= nil then
         settings_main_path_curve_tightness = settings_path_curve_tightness
@@ -702,7 +702,7 @@ local function move_internal_initialize(source_position, move_data)
             path = {},
             initial_face_vector = move_data.initial_face_vector,
             current_face_vector = move_data.current_face_vector,
-            settings_go_threshold = move_data.settings_go_threshold,
+            settings_gameobject_threshold = move_data.settings_gameobject_threshold,
             settings_path_curve_tightness = move_data.settings_path_curve_tightness,
             settings_path_curve_roundness = move_data.settings_path_curve_roundness,
             settings_allow_enter_on_route = move_data.settings_allow_enter_on_route,
@@ -722,7 +722,7 @@ local function move_internal_initialize(source_position, move_data)
         local position_list = {}
         table.insert(position_list, source_position)
 
-        if (near_result.distance > move_data.settings_go_threshold + 1) and move_data.settings_allow_enter_on_route then
+        if (near_result.distance > move_data.settings_gameobject_threshold + 1) and move_data.settings_allow_enter_on_route then
             table.insert(position_list, near_result.position_on_route)
         end
         
@@ -789,7 +789,7 @@ local function move_internal_initialize(source_position, move_data)
             path = new_position_list,
             initial_face_vector = move_data.initial_face_vector,
             current_face_vector = move_data.current_face_vector,
-            settings_go_threshold = move_data.settings_go_threshold,
+            settings_gameobject_threshold = move_data.settings_gameobject_threshold,
             settings_path_curve_tightness = move_data.settings_path_curve_tightness,
             settings_path_curve_roundness = move_data.settings_path_curve_roundness,
             settings_allow_enter_on_route = move_data.settings_allow_enter_on_route,
@@ -806,21 +806,21 @@ end
 --            destination_list as list of number
 --            route_type as optional ROUTETYPE [ROUTETYPE.onetime]
 --            initial_face_vector as optional vecotr3 [nil]
---            settings_go_threshold as optional number [settings_main_go_threshold]
+--            settings_gameobject_threshold as optional number [settings_main_gameobject_threshold]
 --            settings_path_curve_tightness as optional number [settings_main_path_curve_tightness]
 --            settings_path_curve_roundness as optional number [settings_main_path_curve_roundness]
 --            settings_path_curve_max_distance_from_corner as optional number [settings_main_path_curve_max_distance_from_corner]
 --            settings_allow_enter_on_route as optional boolean [settings_main_allow_enter_on_route]
 -- return: special movement data as table
-function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_go_threshold
+function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_gameobject_threshold
     , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
 
     if route_type == nil then
         route_type = M.ROUTETYPE.onetime
     end
 
-    if settings_go_threshold == nil then
-        settings_go_threshold = settings_main_go_threshold
+    if settings_gameobject_threshold == nil then
+        settings_gameobject_threshold = settings_main_gameobject_threshold
     end
 
     if settings_path_curve_roundness == nil then
@@ -857,7 +857,7 @@ function M.move_initialize(source_position, destination_list, route_type, initia
         path = {},
         initial_face_vector = initial_face_vector,
         current_face_vector = initial_face_vector,
-        settings_go_threshold = settings_go_threshold,
+        settings_gameobject_threshold = settings_gameobject_threshold,
         settings_path_curve_tightness = settings_path_curve_tightness,
         settings_path_curve_roundness = settings_path_curve_roundness,
         settings_allow_enter_on_route = settings_allow_enter_on_route,
@@ -902,7 +902,7 @@ function M.move_player(current_position, speed, move_data)
     end
 
     -- check for reaching path section
-    while distance(current_position, move_data.path[move_data.path_index]) <= move_data.settings_go_threshold + 1 do
+    while distance(current_position, move_data.path[move_data.path_index]) <= move_data.settings_gameobject_threshold + 1 do
         if move_data.path_index == #move_data.path then
             -- reached next path node
             if move_data.initial_face_vector == nil then
@@ -914,7 +914,7 @@ function M.move_player(current_position, speed, move_data)
             -- reached destination
             local is_reached = true
             local destination_id = move_data.destination_list[move_data.destination_index]
-            if distance(current_position, map_node_list[destination_id].position) > move_data.settings_go_threshold + 1 then
+            if distance(current_position, map_node_list[destination_id].position) > move_data.settings_gameobject_threshold + 1 then
                 is_reached = false
             else
                 if move_data.route_type == M.ROUTETYPE.onetime then

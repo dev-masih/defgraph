@@ -5,9 +5,9 @@
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v3.md">**Changelog and migration guild from version 2 to 3**</a>  
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v2.md">**Changelog and migration guild from version 1 to 2**</a>  
 
-This module contains functions to create a world map as a shape of a graph and the ability to manipulate it at any time, easily see debug drawing of this graph and move go's inside of this graph with utilizing auto pathfinder with different patterns.  
+This module contains functions to create a world map as a shape of a graph and the ability to manipulate it at any time, easily see debug drawing of this graph and move the game objects inside of this graph with utilizing auto pathfinder with different patterns.  
 
-You can define a graph with several nodes and routes between them and the extension takes care of finding and moving your go inside this graph with just one call inside player update function.  
+You can define a graph with several nodes and routes between them and the extension takes care of finding and moving your game object inside this graph with just one call inside player update function.  
 The gif below shows you this exactly when the destination for all red circles will be selected shuffled between node numbers 6, 18, 14, 2, 4 and 10.  
 
 <img src="examples/raw/static_routing_v4.gif" alt="static routing gif version 4" style="max-width:100%;" />
@@ -68,7 +68,7 @@ This `boolean` value determines is a game object can enter a map in the middle o
 False | True  
 
 ## ROUTETYPE  
-This extension uses an enum named ROUTETYPE to specify how go is going to move inside the graph with multiple destinations.
+This extension uses an enum named ROUTETYPE to specify how game objects are going to move inside the graph with multiple destinations.
 #### **ROUTETYPE.onetime:**  
 This option allows the game object to go through destinations one by one and when it arrived at the last destination it will stop.  
 #### **ROUTETYPE.shuffle:**  
@@ -81,10 +81,10 @@ This option allows the game object to go through destinations one by one and whe
 These are the list of available functions to use, for better understanding of how this module works, please take a look at project example.  
 
 ---  
-### map_set_properties([settings_go_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
+### map_set_properties([settings_gameobject_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
 Set the main path and move calculation properties, nil inputs will fall back to module default values. These values will overwrite default module values.  
 #### **arguments:**  
-* `optional number` settings_go_threshold `[default = 1]`  
+* `optional number` settings_gameobject_threshold `[default = 1]`  
 * `optional number` settings_path_curve_tightness `[default = 4]`  
 * `optional number` settings_path_curve_roundness `[default = 3]`  
 * `optional number` settings_path_curve_max_distance_from_corner `[default = 10]`  
@@ -126,14 +126,14 @@ Update an existing node position.
 * `number` node_id  
 * `vector3` position  
 ---  
-### move_initialize(source_position, destination_list, [route_type], [initial_face_vector], [settings_go_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
+### move_initialize(source_position, destination_list, [route_type], [initial_face_vector], [settings_gameobject_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
 Initialize moves from a source position to destination node list inside the created map and using given threshold and initial face vector as game object initial face direction and path calculate settings considering the route type, **the optional value will fall back to module default values.**    
 #### **arguments:**  
 * `vector3` source_position  
 * `list of numbers` destination_list
 * `optional ROUTETYPE` route_type `[ROUTETYPE.onetime]`
 * `optional vecotr3` initial_face_vector `[nil]`
-* `optional number` settings_go_threshold `[settings_main_go_threshold]`
+* `optional number` settings_gameobject_threshold `[settings_main_gameobject_threshold]`
 * `optional number` settings_path_curve_tightness `[settings_main_path_curve_tightness]`
 * `optional number` settings_path_curve_roundness `[settings_main_path_curve_roundness]`
 * `optional number` settings_path_curve_max_distance_from_corner `[settings_main_path_curve_max_distance_from_corner]`
@@ -155,7 +155,7 @@ Calculate movements from current position of the game object inside the created 
   * `rotation`: `quat` next rotation of game object
   * `is_reached`: `boolean` is game object reached the destination  
   * `destination_id`: `number` current node id of the game object's destination  
-> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside go update function and you can set the game object position to `position` and rotation to `rotation` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
+> **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside game object update function and you can set the game object position to `position` and rotation to `rotation` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
 
 > **Note:** In case of a multidestination scenario, `is_reached` is going to be `true` when each time the game object reached destination with an id of `destination_id` after that `is_reached` is back to `false` and `destination_id` will set to next destination node id. 
 ---  
