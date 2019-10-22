@@ -4,11 +4,10 @@ local defgraph = require("defgraph.defgraph")
 function init(self)
 	-- initilize variables
 	local my_position = go.get_position()
-	local destination_id = 36
 	self.speed = 200.0
 	
 	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, destination_id, vmath.vector3(0, 1, 0))
+	self.movement_data = defgraph.move_initialize(my_position, { 36, 1 }, defgraph.ROUTETYPE.cycle, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
@@ -24,7 +23,6 @@ function update(self, dt)
 
 	-- you can check if go reached to the destination
 	if self.move_result.is_reached then
-		print("I'm at destination!")
-		go.delete()
+		print("I'm at destination id: " .. self.move_result.destination_id)
 	end
 end

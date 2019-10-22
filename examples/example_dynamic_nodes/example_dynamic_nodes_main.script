@@ -34,7 +34,7 @@ function init(self)
 
     -- defining routes between nodes
     for i = 1, #self.node_ids - 1 do
-        defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1], true)
+        defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1])
     end
 end
 
