@@ -69,7 +69,7 @@ This `boolean` value determines is a game object can enter a map in the middle o
 False | True  
 
 ## ROUTETYPE  
-This extension uses an enum named ROUTETYPE to specify how game objects are going to move inside the graph with multiple destinations.
+This extension uses an enum named `ROUTETYPE` to specify how game objects are going to move inside the graph with multiple destinations.
 #### **ROUTETYPE.onetime:**  
 This option allows the game object to go through destinations one by one and when it arrived at the last destination it will stop.  
 #### **ROUTETYPE.shuffle:**  
@@ -81,7 +81,6 @@ This option allows the game object to go through destinations one by one and whe
 ## Functions  
 These are the list of available functions to use, for better understanding of how this module works, please take a look at project example.  
 
----  
 ### map_set_properties([settings_gameobject_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
 Set the main path and move calculation properties, nil inputs will fall back to module default values. These values will overwrite default module values.  
 #### **arguments:**  
@@ -90,7 +89,7 @@ Set the main path and move calculation properties, nil inputs will fall back to 
 * `optional number` settings_path_curve_roundness `[default = 3]`  
 * `optional number` settings_path_curve_max_distance_from_corner `[default = 10]`  
 * `optional boolean` settings_allow_enter_on_route `[default = true]`  
----
+
 ### map_add_node(position)  
 Adding a node at the given position (position.z will get ignored).  
 #### **arguments:**  
@@ -99,7 +98,7 @@ Adding a node at the given position (position.z will get ignored).
 * `number` Newly added node id  
 
 > **Note:** Single nodes with no route attached to them are not participating in any routing calculations and it's better to remove them if you are not using them.  
----  
+
 ### map_add_route(source_id, destination_id, [is_one_way])  
 Adding a two-way route between two nodes, you can set it as one way or two way.  
 #### **arguments:**  
@@ -108,25 +107,25 @@ Adding a two-way route between two nodes, you can set it as one way or two way.
 * `optional boolean` is_one_way `[false]`  
 
 > **Note:** If you never need to get pathfinding result in two way it's better to use a one-way path because it will be a bit computationally lighter.  
----  
+
 ### map_remove_route(source_id, destination_id, [is_remove_one_way])  
 Removing an existing route between two nodes, you can set it to remove just one way or both ways.  
 #### **arguments:**  
 * `number` source_id  
 * `number` destination_id  
 * `optional boolean` is_remove_one_way `[false]`  
----  
+
 ### map_remove_node(node_id)  
 Removing an existing node, attached routes to this node will remove.  
 #### **arguments:**  
 * `number` node_id   
----  
+
 ### map_update_node_position(node_id, position)  
 Update an existing node position.  
 #### **arguments:**  
 * `number` node_id  
 * `vector3` position  
----  
+
 ### move_initialize(source_position, destination_list, [route_type], [initial_face_vector], [settings_gameobject_threshold], [settings_path_curve_tightness], [settings_path_curve_roundness], [settings_path_curve_max_distance_from_corner], [settings_allow_enter_on_route])  
 Initialize moves from a source position to destination node list inside the created map and using given threshold and initial face vector as game object initial face direction and path calculate settings considering the route type, **the optional value will fall back to module default values.**    
 #### **arguments:**  
@@ -142,7 +141,7 @@ Initialize moves from a source position to destination node list inside the crea
 #### **return:**  
 * `table` special movement data  
 > **Note:** The returned special table consists of combined data to use later in `move_player` and `debug_draw_player_move` functions. If at any time you decided to change the destination of game object you have to call this function and overwrite old movement data with returned one.  
----  
+
 ### move_player(current_position, speed, move_data)  
 Calculate movements from current position of the game object inside the created map considering given speed, using last calculated movement data.  
 #### **arguments:**  
@@ -156,10 +155,11 @@ Calculate movements from current position of the game object inside the created 
   * `rotation`: `quat` next rotation of game object
   * `is_reached`: `boolean` is game object reached the destination  
   * `destination_id`: `number` current node id of the game object's destination  
+
 > **Note:** The returned new movement data should overwrite old movement data. normally this function is placed inside game object update function and you can set the game object position to `position` and rotation to `rotation` that is inside move result table. also, you should multiply `dt` with speed yourself before passing it to function.  
 
 > **Note:** In case of a multidestination scenario, `is_reached` is going to be `true` when each time the game object reached destination with an id of `destination_id` after that `is_reached` is back to `false` and `destination_id` will set to next destination node id. 
----  
+
 ### debug_set_properties([node_color], [two_way_route_color], [one_way_route_color], [draw_scale])  
 set debug drawing properties  
 #### **arguments:**  
@@ -167,23 +167,21 @@ set debug drawing properties
 * `optional vector4` two_way_route_color `[vector4(0, 1, 0, 1)]`
 * `optional vector4` one_way_route_color `[vector4(0, 1, 1, 1)]`
 * `optional number` draw_scale `[5]`  
----  
+
 ### debug_draw_map_nodes([is_show_ids])  
 Debug draw all map nodes and choose to show node ids or not.  
 #### **arguments:**  
 * `optional boolean` is_show_ids `[false]`   
----  
+
 ### debug_draw_map_routes()  
 Debug draw all map routes.  
 
----  
 ### debug_draw_player_move(movement_data, color, [is_show_intersection])
 Debug draw player specific path with given color.  
 #### **arguments:**  
 * `table` movement_data
 * `vector4` color
 * `optional boolean` is_show_intersection `[false]` 
----  
 
 ## Donations  
 If you really like this extension and want to support me, consider donating to me with BTC or ETH. All donations are optional and are greatly appreciated. 🙏  
