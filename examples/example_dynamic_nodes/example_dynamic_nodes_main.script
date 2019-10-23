@@ -34,7 +34,7 @@ function init(self)
 
     -- defining routes between nodes
     for i = 1, #self.node_ids - 1 do
-        defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1], true)
+        defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1])
     end
 end
 
@@ -65,6 +65,7 @@ function update(self, dt)
     -- draw debug info of nodes and routes
     defgraph.debug_draw_map_routes()
 
-    msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 620, 0) } )
-    msg.post("@render:", "draw_text", { text = "left click: deploy dot", position = vmath.vector3(20, 600, 0) } )
+    msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 630, 0) } )
+    msg.post("@render:", "draw_text", { text = "destinations : cycle between { 36, 1 }", position = vmath.vector3(20, 610, 0) } )
+    msg.post("@render:", "draw_text", { text = "left click: deploy dot", position = vmath.vector3(20, 590, 0) } )
 end
