@@ -191,7 +191,7 @@ local function map_add_oneway_route(source_id, destination_id, route_info)
                     break
                 end
             end
-            if is_found == false then
+            if not is_found then
                 table.insert(map_node_list[source_id].neighbor_id, destination_id)
             end
 
@@ -202,7 +202,7 @@ local function map_add_oneway_route(source_id, destination_id, route_info)
                     break
                 end
             end
-            if is_found == false then
+            if not is_found then
                 table.insert(map_node_list[destination_id].neighbor_id, source_id)
             end
         end
@@ -276,7 +276,7 @@ function M.map_add_route(source_id, destination_id, is_one_way)
         return
     end
     local route_info = map_add_oneway_route(source_id, destination_id, nil)
-    if is_one_way == false then
+    if not is_one_way then
         map_add_oneway_route(destination_id, source_id, route_info)
     end
     map_update_node_type(source_id)
@@ -298,7 +298,7 @@ function M.map_remove_route(source_id, destination_id, is_remove_one_way)
         return
     end
     map_remove_oneway_route(source_id, destination_id)
-    if is_remove_one_way == false then
+    if not is_remove_one_way then
         map_remove_oneway_route(destination_id, source_id)
     end
     map_update_node_type(source_id)
