@@ -1,5 +1,5 @@
 -- require defgraph
-local defgraph = require("defgraph.defgraph")
+local defgraph = require "defgraph.defgraph"
 
 function init(self)
 	-- initilize variables
