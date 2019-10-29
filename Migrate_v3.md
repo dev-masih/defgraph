@@ -1,5 +1,9 @@
-# Changelog and migration guild from version 2 to 3  
+# Changelog and migration guild from version 2 to 3.x  
 
+## 3.1  
+* Fixed issue with rotation calculation that may cause the game object to scale to flicker. (#4)  
+
+## 3.0  
 * Added ability for game objects to have curved corner paths.
 * Added ability to track game object rotation as move result.
 * Added only one ways routes, and added separate arguments `two_way_route_color` and `one_way_route_color` in `debug_draw_map_nodes` function. 
