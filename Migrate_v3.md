@@ -1,7 +1,7 @@
 # Changelog and migration guild from version 2 to 3.x  
 
 ## 3.1  
-* Fixed issue with rotation calculation that may cause the game object to scale to flicker. (#4)  
+* Fixed issue with rotation calculation that may cause the game object to scale to flicker. [#4](https://github.com/dev-masih/defgraph/issues/4)  
 
 ## 3.0  
 * Added ability for game objects to have curved corner paths.
