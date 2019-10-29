@@ -891,7 +891,7 @@ function M.move_player(current_position, speed, move_data)
         if move_data.initial_face_vector == nil then
             rotation = nil
         else
-            rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector)
+            rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         end
         return move_data, { 
             position = current_position,
@@ -908,7 +908,7 @@ function M.move_player(current_position, speed, move_data)
             if move_data.initial_face_vector == nil then
                 rotation = nil
             else
-                rotation = vmath.quat_from_to(move_data.current_face_vector, move_data.initial_face_vector)
+                rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
             end
 
             -- reached destination
