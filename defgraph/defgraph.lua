@@ -59,18 +59,10 @@ M.ROUTETYPE.CYCLE = hash("routetype_cycle")
 --            settings_allow_enter_on_route as optional boolean [true]
 function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness,
                               settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
-    if settings_gameobject_threshold ~= nil then
-        settings_main_gameobject_threshold = settings_gameobject_threshold
-    end
-    if settings_path_curve_tightness ~= nil then
-        settings_main_path_curve_tightness = settings_path_curve_tightness
-    end
-    if settings_path_curve_roundness ~= nil then
-        settings_main_path_curve_roundness = settings_path_curve_roundness
-    end
-    if settings_path_curve_max_distance_from_corner ~= nil then
-        settings_main_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner
-    end
+    settings_main_gameobject_threshold = settings_gameobject_threshold or settings_main_gameobject_threshold
+    settings_main_path_curve_tightness = settings_path_curve_tightness or settings_main_path_curve_tightness
+    settings_main_path_curve_roundness = settings_path_curve_roundness or settings_main_path_curve_roundness
+    settings_main_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
     if settings_allow_enter_on_route ~= nil then
         settings_main_allow_enter_on_route = settings_allow_enter_on_route
     end
@@ -124,10 +116,10 @@ end
 --            one_way_route_color as optional vector4 [vector4(0, 1, 1, 1)]
 --            draw_scale as optional number [5]
 function M.debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
-    if node_color ~= nil then debug_node_color = node_color end
-    if two_way_route_color ~= nil then debug_two_way_route_color = two_way_route_color end
-    if one_way_route_color ~= nil then debug_one_way_route_color = one_way_route_color end
-    if draw_scale ~= nil then debug_draw_scale = draw_scale end
+    debug_node_color = node_color or debug_node_color
+    debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
+    debug_one_way_route_color = one_way_route_color or debug_one_way_route_color
+    debug_draw_scale = draw_scale or debug_draw_scale
 end
 
 -- local: Count size of non-sequential table.
@@ -145,10 +137,10 @@ end
 --            route_info as table
 -- return: route info entry as table
 local function map_add_oneway_route(source_id, destination_id, route_info)
-    if map_route_list[source_id] == nil then map_route_list[source_id] = {} end
+    if not map_route_list[source_id] then map_route_list[source_id] = {} end
 
-    if map_route_list[source_id][destination_id] == nil then
-        if route_info == nil then
+    if not map_route_list[source_id][destination_id] then
+        if not route_info then
             -- line equation: ax + by + c = 0
             local a, b, c
             local from_pos = map_node_list[source_id].position
@@ -174,7 +166,7 @@ local function map_add_oneway_route(source_id, destination_id, route_info)
             map_route_list[source_id][destination_id] = route_info
         end
 
-        if route_info == nil then
+        if not route_info then
             local is_found = false
             for i = 1, #map_node_list[source_id].neighbor_id do
                 if map_node_list[source_id].neighbor_id[i] == destination_id then
@@ -222,7 +214,7 @@ local function map_remove_oneway_route(source_id, destination_id)
     if table_size(map_route_list[source_id]) == 0 then
         map_route_list[source_id] = nil
     end
-    if map_route_list[destination_id] == nil or map_route_list[destination_id][source_id] == nil then
+    if not (map_route_list[destination_id] and map_route_list[destination_id][source_id]) then
         for i = 1, #map_node_list[destination_id].neighbor_id do
             if map_node_list[destination_id].neighbor_id[i] == source_id then
                 table.remove(map_node_list[destination_id].neighbor_id, i)
@@ -262,7 +254,6 @@ function M.map_add_route(source_id, destination_id, is_one_way)
     assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
     assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
-    if is_one_way == nil then is_one_way = false end
     if source_id == destination_id then return end
 
     local route_info = map_add_oneway_route(source_id, destination_id, nil)
@@ -285,7 +276,6 @@ function M.map_remove_route(source_id, destination_id, is_remove_one_way)
     assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
     assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
-    if is_remove_one_way == nil then is_remove_one_way = false end
     if source_id == destination_id then return end
 
     map_remove_oneway_route(source_id, destination_id)
@@ -350,7 +340,7 @@ end
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-            if map_route_list[to_id] ~= nil and map_route_list[to_id][from_id] ~= nil then
+            if map_route_list[to_id] and map_route_list[to_id][from_id] then
                 msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
             else
                 msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
@@ -420,7 +410,7 @@ local function calculate_to_nearest_route(position)
 
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-            if already_calculated[from_id] == nil or already_calculated[from_id][to_id] == nil then
+            if not (already_calculated[from_id] and already_calculated[from_id][to_id]) then
 
                 local is_between, near_pos_x, near_pos_y, dist, dist_from_id, dist_to_id
                 local from_pos = map_node_list[from_id].position
@@ -486,11 +476,8 @@ local function calculate_to_nearest_route(position)
                     min_to_id = to_id
                 end
 
-                if already_calculated[to_id] == nil then
-                    already_calculated[to_id] = {}
-                end
-                already_calculated[to_id][from_id] = true
-
+                if not already_calculated[to_id] then already_calculated[to_id] = {} end
+                already_calculated[to_id][from_id] = 1
             end
         end
     end
@@ -540,17 +527,12 @@ local function calculate_path(start_id, finish_id)
         if smallest == finish_id then
             path = {}
             path_distance = 0
-            while previous[smallest] ~= nil do
+            while previous[smallest] do
 
                 table.insert(path, 1, { id = smallest, distance = path_distance })
                 
-                if map_route_list[previous[smallest]] == nil then
-                    return nil
-                end
-
-                if map_route_list[previous[smallest]][smallest] == nil then
-                    return nil
-                end
+                if not map_route_list[previous[smallest]] then return nil end
+                if not map_route_list[previous[smallest]][smallest] then return nil end
 
                 path_distance = path_distance + map_route_list[previous[smallest]][smallest].distance
                 smallest = previous[smallest];
@@ -565,7 +547,7 @@ local function calculate_path(start_id, finish_id)
             break;
         end
 
-        if map_route_list[smallest] ~= nil then
+        if map_route_list[smallest] then
             for to_id, neighbor in pairs(map_route_list[smallest]) do
                 local alt = distances[smallest] + neighbor.distance
                 if alt < distances[to_id] then
@@ -599,9 +581,9 @@ local function fetch_path(change_number, from_id, to_id)
     end
 
     -- check for existing cache
-    if pathfinder_cache[from_id] ~= nil then
+    if pathfinder_cache[from_id] then
         local cache = pathfinder_cache[from_id][to_id]
-        if cache ~= nil then
+        if cache then
             if cache.change_number == change_number then
                 return cache
             end
@@ -610,13 +592,13 @@ local function fetch_path(change_number, from_id, to_id)
 
     -- calculate path
     local path = calculate_path(from_id, to_id)
-    if path == nil or #path == 0 then return nil end
+    if not path or #path == 0 then return nil end
 
     -- update cache
     local route = {}
     for index = #path, 1, -1 do
         if path[index].distance ~= 0 then
-            if pathfinder_cache[path[index].id] == nil then
+            if not pathfinder_cache[path[index].id] then
                 pathfinder_cache[path[index].id] = {}
             end
 
@@ -682,7 +664,7 @@ end
 -- return: special movement data as table
 local function move_internal_initialize(source_position, move_data)
     local near_result = calculate_to_nearest_route(source_position)
-    if near_result == nil or #move_data.destination_list == 0 then
+    if not near_result or #move_data.destination_list == 0 then
         -- stay until something changes
         return {
             change_number = map_change_iterator,
@@ -703,10 +685,10 @@ local function move_internal_initialize(source_position, move_data)
         local from_path = nil
         local to_path = nil
 
-        if map_route_list[near_result.route_to_id] ~= nil and map_route_list[near_result.route_to_id][near_result.route_from_id] ~= nil then
+        if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
             from_path = fetch_path(map_change_iterator, near_result.route_from_id, move_data.destination_list[move_data.destination_index])
         end
-        if map_route_list[near_result.route_from_id] ~= nil and map_route_list[near_result.route_from_id][near_result.route_to_id] ~= nil then
+        if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
             to_path = fetch_path(map_change_iterator, near_result.route_to_id, move_data.destination_list[move_data.destination_index])
         end
 
@@ -717,16 +699,16 @@ local function move_internal_initialize(source_position, move_data)
             table.insert(position_list, near_result.position_on_route)
         end
         
-        if from_path ~= nil or to_path ~= nil then
+        if from_path or to_path then
             local from_distance, to_distance
 
-            if from_path == nil then
+            if not from_path then
                 from_distance = huge
             else
                 from_distance = from_path.distance + distance(source_position, map_node_list[near_result.route_from_id].position)
             end
 
-            if to_path == nil then
+            if not to_path then
                 to_distance = huge
             else
                 to_distance = to_path.distance + distance(source_position, map_node_list[near_result.route_to_id].position)
@@ -809,24 +791,11 @@ function M.move_initialize(source_position, destination_list, route_type, initia
     assert(source_position, "You must provide a source position")
     assert(destination_list, "You must provide a destination list")
 
-    if route_type == nil then route_type = M.ROUTETYPE.ONETIME end
-
-    if settings_gameobject_threshold == nil then
-        settings_gameobject_threshold = settings_main_gameobject_threshold
-    end
-
-    if settings_path_curve_roundness == nil then
-        settings_path_curve_roundness = settings_main_path_curve_roundness
-    end
-
-    if settings_path_curve_tightness == nil then
-        settings_path_curve_tightness = settings_main_path_curve_tightness
-    end
-
-    if settings_path_curve_max_distance_from_corner == nil then
-        settings_path_curve_max_distance_from_corner = settings_main_path_curve_max_distance_from_corner
-    end
-
+    route_type = route_type or M.ROUTETYPE.ONETIME
+    settings_gameobject_threshold = settings_gameobject_threshold or settings_main_gameobject_threshold
+    settings_path_curve_roundness = settings_path_curve_roundness or settings_main_path_curve_roundness
+    settings_path_curve_tightness = settings_path_curve_tightness or settings_main_path_curve_tightness
+    settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
     if settings_allow_enter_on_route == nil then
         settings_allow_enter_on_route = settings_main_allow_enter_on_route
     end
@@ -883,7 +852,7 @@ function M.move_player(current_position, speed, move_data)
     local rotation
     -- stand still if no route found
     if move_data.path_index == 0 then
-        if move_data.initial_face_vector == nil then
+        if not move_data.initial_face_vector then
             rotation = nil
         else
             rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
@@ -900,7 +869,7 @@ function M.move_player(current_position, speed, move_data)
     while distance(current_position, move_data.path[move_data.path_index]) <= move_data.settings_gameobject_threshold + 1 do
         if move_data.path_index == #move_data.path then
             -- reached next path node
-            if move_data.initial_face_vector == nil then
+            if not move_data.initial_face_vector then
                 rotation = nil
             else
                 rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
@@ -952,7 +921,7 @@ function M.move_player(current_position, speed, move_data)
     local direction_vector = move_data.path[move_data.path_index] - current_position
     direction_vector.z = 0
     direction_vector = vmath.normalize(direction_vector)
-    if move_data.initial_face_vector == nil then
+    if not move_data.initial_face_vector then
         rotation = nil
     else
         local rotation_vector = vmath.lerp(0.2 * speed, move_data.current_face_vector, direction_vector)
