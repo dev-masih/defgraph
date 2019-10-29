@@ -125,18 +125,10 @@ end
 --            one_way_route_color as optional vector4 [vector4(0, 1, 1, 1)]
 --            draw_scale as optional number [5]
 function M.debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
-    if node_color ~= nil then
-        debug_node_color = node_color
-    end
-    if two_way_route_color ~= nil then
-        debug_two_way_route_color = two_way_route_color
-    end
-    if one_way_route_color ~= nil then
-        debug_one_way_route_color = one_way_route_color
-    end
-    if draw_scale ~= nil then
-        debug_draw_scale = draw_scale
-    end
+    if node_color ~= nil then debug_node_color = node_color end
+    if two_way_route_color ~= nil then debug_two_way_route_color = two_way_route_color end
+    if one_way_route_color ~= nil then debug_one_way_route_color = one_way_route_color end
+    if draw_scale ~= nil then debug_draw_scale = draw_scale end
 end
 
 -- local: Count size of non-sequential table.
@@ -144,9 +136,7 @@ end
 -- return: size of table as number
 local function table_size(table)
     local count = 0
-    for _ in pairs(table) do
-        count = count + 1
-    end
+    for _ in pairs(table) do count = count + 1 end
     return count
 end
 
@@ -156,9 +146,7 @@ end
 --            route_info as table
 -- return: route info entry as table
 local function map_add_oneway_route(source_id, destination_id, route_info)
-    if map_route_list[source_id] == nil then
-        map_route_list[source_id] = {}
-    end
+    if map_route_list[source_id] == nil then map_route_list[source_id] = {} end
 
     if map_route_list[source_id][destination_id] == nil then
         if route_info == nil then
@@ -218,14 +206,12 @@ end
 -- local: Update node type parameter.
 -- arguments: node_id as number
 local function map_update_node_type(node_id)
-    if map_node_list[node_id] ~= nil then
-        if #map_node_list[node_id].neighbor_id == 0 then
-            map_node_list[node_id].type = NODETYPE.single
-        elseif #map_node_list[node_id].neighbor_id == 1 then
-            map_node_list[node_id].type = NODETYPE.deadend
-        elseif #map_node_list[node_id].neighbor_id > 1 then
-            map_node_list[node_id].type = NODETYPE.intersection
-        end
+    if #map_node_list[node_id].neighbor_id == 0 then
+        map_node_list[node_id].type = NODETYPE.single
+    elseif #map_node_list[node_id].neighbor_id == 1 then
+        map_node_list[node_id].type = NODETYPE.deadend
+    elseif #map_node_list[node_id].neighbor_id > 1 then
+        map_node_list[node_id].type = NODETYPE.intersection
     end
 end
 
@@ -233,23 +219,21 @@ end
 -- arguments: source_id as number
 --            destination_id as number
 local function map_remove_oneway_route(source_id, destination_id)
-    if map_route_list[source_id] ~= nil then
-        map_route_list[source_id][destination_id] = nil
-        if table_size(map_route_list[source_id]) == 0 then
-            map_route_list[source_id] = nil
-        end
-        if map_route_list[destination_id] == nil or map_route_list[destination_id][source_id] == nil then
-            for i = 1, #map_node_list[destination_id].neighbor_id do
-                if map_node_list[destination_id].neighbor_id[i] == source_id then
-                    table.remove(map_node_list[destination_id].neighbor_id, i)
-                    break
-                end
+    map_route_list[source_id][destination_id] = nil
+    if table_size(map_route_list[source_id]) == 0 then
+        map_route_list[source_id] = nil
+    end
+    if map_route_list[destination_id] == nil or map_route_list[destination_id][source_id] == nil then
+        for i = 1, #map_node_list[destination_id].neighbor_id do
+            if map_node_list[destination_id].neighbor_id[i] == source_id then
+                table.remove(map_node_list[destination_id].neighbor_id, i)
+                break
             end
-            for i = 1, #map_node_list[source_id].neighbor_id do
-                if map_node_list[source_id].neighbor_id[i] == destination_id then
-                    table.remove(map_node_list[source_id].neighbor_id, i)
-                    break
-                end
+        end
+        for i = 1, #map_node_list[source_id].neighbor_id do
+            if map_node_list[source_id].neighbor_id[i] == destination_id then
+                table.remove(map_node_list[source_id].neighbor_id, i)
+                break
             end
         end
     end
@@ -275,13 +259,13 @@ end
 function M.map_add_route(source_id, destination_id, is_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
+    
+    assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
+    assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
-    if is_one_way == nil then
-        is_one_way = false
-    end
-    if source_id == destination_id then
-        return
-    end
+    if is_one_way == nil then is_one_way = false end
+    if source_id == destination_id then return end
+
     local route_info = map_add_oneway_route(source_id, destination_id, nil)
     if not is_one_way then
         map_add_oneway_route(destination_id, source_id, route_info)
@@ -299,12 +283,12 @@ function M.map_remove_route(source_id, destination_id, is_remove_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
 
-    if is_remove_one_way == nil then
-        is_remove_one_way = false
-    end
-    if source_id == destination_id then
-        return
-    end
+    assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
+    assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
+
+    if is_remove_one_way == nil then is_remove_one_way = false end
+    if source_id == destination_id then return end
+
     map_remove_oneway_route(source_id, destination_id)
     if not is_remove_one_way then
         map_remove_oneway_route(destination_id, source_id)
@@ -367,7 +351,6 @@ end
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-
             if map_route_list[to_id] ~= nil and map_route_list[to_id][from_id] ~= nil then
                 msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
             else
@@ -628,10 +611,8 @@ local function fetch_path(change_number, from_id, to_id)
 
     -- calculate path
     local path = calculate_path(from_id, to_id)
-    if path == nil or #path == 0 then
-        return nil
-    end
-    
+    if path == nil or #path == 0 then return nil end
+
     -- update cache
     local route = {}
     for index = #path, 1, -1 do
@@ -829,9 +810,7 @@ function M.move_initialize(source_position, destination_list, route_type, initia
     assert(source_position, "You must provide a source position")
     assert(destination_list, "You must provide a destination list")
 
-    if route_type == nil then
-        route_type = M.ROUTETYPE.onetime
-    end
+    if route_type == nil then route_type = M.ROUTETYPE.onetime end
 
     if settings_gameobject_threshold == nil then
         settings_gameobject_threshold = settings_main_gameobject_threshold
