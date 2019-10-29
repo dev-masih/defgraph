@@ -7,7 +7,7 @@ function init(self)
 	self.speed = 100.0
 	
 	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.shuffle)
+	self.movement_data = defgraph.move_initialize(my_position, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE)
 end
 
 function update(self, dt)

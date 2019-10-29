@@ -18,11 +18,11 @@ local pathfinder_cache = {}
 
 local map_node_id_iterator = 0
 local map_change_iterator = 0
-local NODETYPE = {
-    single = 0,
-    deadend = 1,
-    intersection = 2
-}
+
+local NODETYPE = {}
+NODETYPE.SINGLE = hash("nodetype_single")
+NODETYPE.DEADEND = hash("nodetype_deadend")
+NODETYPE.INTERSECTION = hash("nodetype_intersection")
 
 -- local: color vectors and scale of debug drawing
 local debug_node_color = vmath.vector4(1, 0, 1, 1)
@@ -46,11 +46,10 @@ local pi = math.pi
 local atan2 = math.atan2
 
 -- global: routing types
-M.ROUTETYPE = {
-    onetime = 0,
-    shuffle = 1,
-    cycle = 2
-}
+M.ROUTETYPE = {}
+M.ROUTETYPE.ONETIME = hash("routetype_onetime")
+M.ROUTETYPE.SHUFFLE = hash("routetype_shuffle")
+M.ROUTETYPE.CYCLE = hash("routetype_cycle")
 
 -- global: Set the main path and move calculation properties, nil inputs will fall back to default values.
 -- arguments: settings_gameobject_threshold as optional number [1]
@@ -207,11 +206,11 @@ end
 -- arguments: node_id as number
 local function map_update_node_type(node_id)
     if #map_node_list[node_id].neighbor_id == 0 then
-        map_node_list[node_id].type = NODETYPE.single
+        map_node_list[node_id].type = NODETYPE.SINGLE
     elseif #map_node_list[node_id].neighbor_id == 1 then
-        map_node_list[node_id].type = NODETYPE.deadend
+        map_node_list[node_id].type = NODETYPE.DEADEND
     elseif #map_node_list[node_id].neighbor_id > 1 then
-        map_node_list[node_id].type = NODETYPE.intersection
+        map_node_list[node_id].type = NODETYPE.INTERSECTION
     end
 end
 
@@ -247,7 +246,7 @@ function M.map_add_node(position)
 
     map_node_id_iterator = map_node_id_iterator + 1
     local node_id = map_node_id_iterator
-    map_node_list[node_id] = { position = vmath.vector3(position.x, position.y, 0), type = NODETYPE.single, neighbor_id = {} }
+    map_node_list[node_id] = { position = vmath.vector3(position.x, position.y, 0), type = NODETYPE.SINGLE, neighbor_id = {} }
     map_change_iterator = map_change_iterator + 1
     return node_id
 end
@@ -326,18 +325,18 @@ function M.debug_draw_map_nodes(is_show_ids)
             msg.post("@render:", "draw_text", { text = node_id, position = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0) } )
         end
 
-        if node.type == NODETYPE.single then
+        if node.type == NODETYPE.SINGLE then
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
         end
         
-        if node.type == NODETYPE.deadend then
+        if node.type == NODETYPE.DEADEND then
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
         end
 
-        if node.type == NODETYPE.intersection then
+        if node.type == NODETYPE.INTERSECTION then
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), color = debug_node_color } )
@@ -796,7 +795,7 @@ end
 -- to their default values.
 -- arguments: source_position as vector3
 --            destination_list as list of number
---            route_type as optional ROUTETYPE [ROUTETYPE.onetime]
+--            route_type as optional ROUTETYPE [ROUTETYPE.ONETIME]
 --            initial_face_vector as optional vecotr3 [nil]
 --            settings_gameobject_threshold as optional number [settings_main_gameobject_threshold]
 --            settings_path_curve_tightness as optional number [settings_main_path_curve_tightness]
@@ -810,7 +809,7 @@ function M.move_initialize(source_position, destination_list, route_type, initia
     assert(source_position, "You must provide a source position")
     assert(destination_list, "You must provide a destination list")
 
-    if route_type == nil then route_type = M.ROUTETYPE.onetime end
+    if route_type == nil then route_type = M.ROUTETYPE.ONETIME end
 
     if settings_gameobject_threshold == nil then
         settings_gameobject_threshold = settings_main_gameobject_threshold
@@ -833,7 +832,7 @@ function M.move_initialize(source_position, destination_list, route_type, initia
     end
 
     local destination_id = 1
-    if route_type == M.ROUTETYPE.shuffle and #destination_list > 1 then
+    if route_type == M.ROUTETYPE.SHUFFLE and #destination_list > 1 then
         math.random(#destination_list)
         math.random(#destination_list)
         math.random(#destination_list)
@@ -913,12 +912,12 @@ function M.move_player(current_position, speed, move_data)
             if distance(current_position, map_node_list[destination_id].position) > move_data.settings_gameobject_threshold + 1 then
                 is_reached = false
             else
-                if move_data.route_type == M.ROUTETYPE.onetime then
+                if move_data.route_type == M.ROUTETYPE.ONETIME then
                     if move_data.destination_index < #move_data.destination_list then
                         move_data.destination_index = move_data.destination_index + 1
                         move_data = move_internal_initialize(current_position, move_data)
                     end
-                elseif move_data.route_type == M.ROUTETYPE.shuffle then
+                elseif move_data.route_type == M.ROUTETYPE.SHUFFLE then
                     if #move_data.destination_list > 1 then
                         local new_destination_id = move_data.destination_index
                         repeat
@@ -927,7 +926,7 @@ function M.move_player(current_position, speed, move_data)
                         move_data.destination_index = new_destination_id
                         move_data = move_internal_initialize(current_position, move_data)
                     end
-                elseif move_data.route_type == M.ROUTETYPE.cycle then
+                elseif move_data.route_type == M.ROUTETYPE.CYCLE then
                     if move_data.destination_index < #move_data.destination_list then
                         move_data.destination_index = move_data.destination_index + 1
                     else
