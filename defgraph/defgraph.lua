@@ -58,8 +58,8 @@ M.ROUTETYPE = {
 --            settings_path_curve_roundness as optional number [3]
 --            settings_path_curve_max_distance_from_corner as optional number [10]
 --            settings_allow_enter_on_route as optional boolean [true]
-function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness
-    , settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
+function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness,
+                              settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
     if settings_gameobject_threshold ~= nil then
         settings_main_gameobject_threshold = settings_gameobject_threshold
     end
@@ -81,9 +81,13 @@ end
 -- arguments: node_id as number
 --            position as vecotr3
 function M.map_update_node_position(node_id, position)
-    if map_node_list[node_id] ~= nil then
-        map_node_list[node_id].position = position
-    end
+    assert(node_id, "You must provide a node id")
+    assert(position, "You must provide a position")
+
+    assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
+
+    map_node_list[node_id].position = position
+
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
             if from_id == node_id or to_id == node_id then
@@ -255,6 +259,8 @@ end
 -- arguments: position as vector3
 -- return: Newly added node id as number
 function M.map_add_node(position)
+    assert(position, "You must provide a position")
+
     map_node_id_iterator = map_node_id_iterator + 1
     local node_id = map_node_id_iterator
     map_node_list[node_id] = { position = vmath.vector3(position.x, position.y, 0), type = NODETYPE.single, neighbor_id = {} }
@@ -267,12 +273,13 @@ end
 --            destination_id as number
 --            is_one_way as optional boolean [false]
 function M.map_add_route(source_id, destination_id, is_one_way)
+    assert(source_id, "You must provide a source id")
+    assert(destination_id, "You must provide a destination id")
+
     if is_one_way == nil then
         is_one_way = false
     end
-    if map_node_list[source_id] == nil 
-    or map_node_list[destination_id] == nil
-    or source_id == destination_id then
+    if source_id == destination_id then
         return
     end
     local route_info = map_add_oneway_route(source_id, destination_id, nil)
@@ -289,12 +296,13 @@ end
 --            destination_id as number
 --            is_remove_one_way as optional boolean [false]
 function M.map_remove_route(source_id, destination_id, is_remove_one_way)
+    assert(source_id, "You must provide a source id")
+    assert(destination_id, "You must provide a destination id")
+
     if is_remove_one_way == nil then
         is_remove_one_way = false
     end
-    if map_node_list[source_id] == nil
-    or map_node_list[destination_id] == nil
-    or source_id == destination_id then
+    if source_id == destination_id then
         return
     end
     map_remove_oneway_route(source_id, destination_id)
@@ -309,9 +317,10 @@ end
 -- global: Removing an existing node, attached routes to this node will remove.
 -- arguments: node_id as number
 function M.map_remove_node(node_id)
-    if map_node_list[node_id] == nil then
-        return
-    end
+    assert(node_id, "You must provide a node id")
+
+    assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
+
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
             if from_id == node_id or to_id == node_id then
@@ -379,6 +388,9 @@ end
 --            color as vector4
 --            is_show_intersection as optional boolean [false]
 function M.debug_draw_player_move(movement_data, color, is_show_intersection)
+    assert(movement_data, "You must provide a movement data")
+    assert(color, "You must provide a color")
+
     if movement_data.path_index ~= 0 then
         for index = movement_data.path_index, #movement_data.path do
             if index ~= #movement_data.path then
@@ -595,7 +607,6 @@ end
 --              distance as number
 --              path as list of number }
 local function fetch_path(change_number, from_id, to_id)
-
     -- check for same from and to id
     if from_id == to_id then
         return {
@@ -646,8 +657,8 @@ end
 --            settings_path_curve_tightness as number
 --            settings_path_curve_max_distance_from_corner as number
 -- return: curve postions as list table of vector3
-local function process_path_curvature(before, current, after, roundness, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
-
+local function process_path_curvature(before, current, after, roundness, settings_path_curve_tightness,
+                                      settings_path_curve_max_distance_from_corner)
     local new_position_list = {}
     
     local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before + current / settings_path_curve_tightness
@@ -812,8 +823,11 @@ end
 --            settings_path_curve_max_distance_from_corner as optional number [settings_main_path_curve_max_distance_from_corner]
 --            settings_allow_enter_on_route as optional boolean [settings_main_allow_enter_on_route]
 -- return: special movement data as table
-function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_gameobject_threshold
-    , settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
+function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_gameobject_threshold,
+                           settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner,
+                           settings_allow_enter_on_route)
+    assert(source_position, "You must provide a source position")
+    assert(destination_list, "You must provide a destination list")
 
     if route_type == nil then
         route_type = M.ROUTETYPE.onetime
@@ -879,6 +893,9 @@ end
 --              is_reached as boolean,
 --              destination_id as number }
 function M.move_player(current_position, speed, move_data)
+    assert(current_position, "You must provide a current position")
+    assert(speed, "You must provide a speed")
+    assert(move_data, "You must provide a move data")
 
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
