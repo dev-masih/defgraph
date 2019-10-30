@@ -1,9 +1,9 @@
-# DefGraph v4  
+# DefGraph v4.1  
 
 <img src="examples/raw/banner.jpg" alt="defgraph banner" style="max-width:100%;" />
 
-* <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v4.md">**Changelog and migration guild from version 3 to 4**</a>  
-* <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v3.md">**Changelog and migration guild from version 2 to 3**</a>  
+* <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v4.md">**Changelog and migration guild from version 3.1 to 4.x**</a>  
+* <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v3.md">**Changelog and migration guild from version 2 to 3.x**</a>  
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v2.md">**Changelog and migration guild from version 1 to 2**</a>  
 
 This module contains functions to create a world map as a shape of a graph and the ability to manipulate it at any time, easily see debug drawing of this graph and move the game objects inside of this graph with utilizing auto pathfinder with different patterns.  
@@ -70,11 +70,11 @@ False | True
 
 ## ROUTETYPE  
 This extension uses an enum named `ROUTETYPE` to specify how game objects are going to move inside the graph with multiple destinations.
-#### **ROUTETYPE.onetime:**  
+#### **ROUTETYPE.ONETIME:**  
 This option allows the game object to go through destinations one by one and when it arrived at the last destination it will stop.  
-#### **ROUTETYPE.shuffle:**  
+#### **ROUTETYPE.SHUFFLE:**  
 This option allows the game object to go through destinations in the shuffled order none stop.  
-#### **ROUTETYPE.cycle:**  
+#### **ROUTETYPE.CYCLE:**  
 This option allows the game object to go through destinations one by one and when it arrived at the last destination it will go back to the first one and cycle through all destinations none stop.  
 > **Note:** These enums only affect when the game object has more than one destination.  
 
