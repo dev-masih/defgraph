@@ -1,4 +1,4 @@
-# DefGraph v4  
+# DefGraph v4.1  
 
 <img src="examples/raw/banner.jpg" alt="defgraph banner" style="max-width:100%;" />
 

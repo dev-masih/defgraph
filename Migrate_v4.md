@@ -3,7 +3,7 @@
 ## 4.1  
 * Fixed issue that when a game object will reach the last destination it has a minor flicker.  
 * `ROUTETYPE` members `onetime`, `shuffle` and `cycle` are changed to `ONETIME`, `SHUFFLE` and `CYCLE`.
-* Lots of code quality and style improvements.
+* Lots of code quality and style improvements and optimized memory and speed consumption.
 
 ## 4.0  
 * Added ability to specify multiple destination node id as `destination_list` and type of route that the game object has to walk as `route_type` in `move_initialize` function.  
