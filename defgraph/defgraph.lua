@@ -554,10 +554,8 @@ local function fetch_path(change_number, from_id, to_id)
     -- check for existing cache
     if pathfinder_cache[from_id] then
         local cache = pathfinder_cache[from_id][to_id]
-        if cache then
-            if cache.change_number == change_number then
-                return cache
-            end
+        if cache and cache.change_number == change_number then
+            return cache
         end
     end
 
@@ -572,7 +570,6 @@ local function fetch_path(change_number, from_id, to_id)
             if not pathfinder_cache[path[index].id] then
                 pathfinder_cache[path[index].id] = {}
             end
-
             pathfinder_cache[path[index].id][to_id] = {
                 change_number = change_number,
                 distance = path[index].distance,
@@ -588,41 +585,38 @@ end
 ---- Calculate path curvature.
 local function process_path_curvature(before, current, after, roundness, settings_path_curve_tightness,
                                       settings_path_curve_max_distance_from_corner)
-    local new_position_list = {}
-    
     local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before + current / settings_path_curve_tightness
     local R_before = before / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current
     local Q_after = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current + after / settings_path_curve_tightness
     local R_after = current / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * after
     
     if distance(Q_before, before) > settings_path_curve_max_distance_from_corner then
-        Q_before = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(before, current), before, current)
+        Q_before = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(before, current), before, current)
     end
     if distance(R_before, current) > settings_path_curve_max_distance_from_corner then
-        R_before = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(before, current), current, before)
+        R_before = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(before, current), current, before)
     end
     if distance(Q_after, current) > settings_path_curve_max_distance_from_corner then
-        Q_after = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(current, after), current, after)
+        Q_after = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(current, after), current, after)
     end
     if distance(R_after, after) > settings_path_curve_max_distance_from_corner then
-        R_after = vmath.lerp(settings_path_curve_max_distance_from_corner/distance(current, after), after, current)
+        R_after = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(current, after), after, current)
     end
 
     if roundness ~= 1 then
-        local new_list_before = process_path_curvature(Q_before, R_before, Q_after, roundness - 1, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
-        local new_list_after = process_path_curvature(R_before, Q_after, R_after, roundness - 1, settings_path_curve_tightness, settings_path_curve_max_distance_from_corner)
+        local list_before = process_path_curvature(Q_before, R_before, Q_after, roundness - 1, settings_path_curve_tightness,
+                                                        settings_path_curve_max_distance_from_corner)
+        local list_after = process_path_curvature(R_before, Q_after, R_after, roundness - 1, settings_path_curve_tightness,
+                                                        settings_path_curve_max_distance_from_corner)
 
-        for key, value in pairs(new_list_before) do
-            table.insert(new_position_list, value)
+        for key, value in pairs(list_after) do
+            table.insert(list_before, value)
         end
-        for key, value in pairs(new_list_after) do
-            table.insert(new_position_list, value)
-        end
+
+        return list_before, Q_before, R_after
     else
-        table.insert(new_position_list, R_before)
-        table.insert(new_position_list, Q_after)
+        return {R_before, Q_after}, Q_before, R_after
     end
-    return new_position_list, Q_before, R_after
 end
 
 ---- Initialize moves from source position to a node with an destination node inside the created map.
@@ -630,21 +624,10 @@ local function move_internal_initialize(source_position, move_data)
     local near_result = calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
         -- stay until something changes
-        return {
-            change_number = map_change_iterator,
-            destination_list = move_data.destination_list,
-            destination_index = move_data.destination_index,
-            route_type = move_data.route_type,
-            path_index = 0,
-            path = {},
-            initial_face_vector = move_data.initial_face_vector,
-            current_face_vector = move_data.current_face_vector,
-            settings_gameobject_threshold = move_data.settings_gameobject_threshold,
-            settings_path_curve_tightness = move_data.settings_path_curve_tightness,
-            settings_path_curve_roundness = move_data.settings_path_curve_roundness,
-            settings_allow_enter_on_route = move_data.settings_allow_enter_on_route,
-            settings_path_curve_max_distance_from_corner = move_data.settings_path_curve_max_distance_from_corner
-        }
+        move_data.change_number = map_change_iterator
+        move_data.path_index = 0
+        move_data.path = {}
+        return move_data
     else
         local from_path = nil
         local to_path = nil
@@ -691,47 +674,37 @@ local function move_internal_initialize(source_position, move_data)
             end
         end
 
-        local new_position_list = {}
         if move_data.settings_path_curve_roundness ~= 0 then
-            table.insert(new_position_list, position_list[1])
+            move_data.path = {}
+
+            table.insert(move_data.path, position_list[1])
 
             for i = 2, #position_list - 1 do
-                local partial_position_list, Q_before, R_after = process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1]
-                , move_data.settings_path_curve_roundness, move_data.settings_path_curve_tightness, move_data.settings_path_curve_max_distance_from_corner)
+                local partial_position_list, Q_before, R_after = process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1],
+                                                                 move_data.settings_path_curve_roundness, move_data.settings_path_curve_tightness,
+                                                                 move_data.settings_path_curve_max_distance_from_corner)
 
                 if i == 2 then
-                    table.insert(new_position_list, Q_before)
+                    table.insert(move_data.path, Q_before)
                 end
 
                 for key, value in pairs(partial_position_list) do
-                    table.insert(new_position_list, value)
+                    table.insert(move_data.path, value)
                 end
 
                 if i == #position_list - 1 then
-                    table.insert(new_position_list, R_after)
+                    table.insert(move_data.path, R_after)
                 end
             end
 
-            table.insert(new_position_list, position_list[#position_list])
+            table.insert(move_data.path, position_list[#position_list])
         else
-            new_position_list = position_list
+            move_data.path = position_list
         end
 
-        return {
-            change_number = map_change_iterator,
-            destination_list = move_data.destination_list,
-            destination_index = move_data.destination_index,
-            route_type = move_data.route_type,
-            path_index = 1,
-            path = new_position_list,
-            initial_face_vector = move_data.initial_face_vector,
-            current_face_vector = move_data.current_face_vector,
-            settings_gameobject_threshold = move_data.settings_gameobject_threshold,
-            settings_path_curve_tightness = move_data.settings_path_curve_tightness,
-            settings_path_curve_roundness = move_data.settings_path_curve_roundness,
-            settings_allow_enter_on_route = move_data.settings_allow_enter_on_route,
-            settings_path_curve_max_distance_from_corner = move_data.settings_path_curve_max_distance_from_corner
-        }
+        move_data.change_number = map_change_iterator
+        move_data.path_index = 1
+        return move_data
     end
 end
 
@@ -814,12 +787,10 @@ function M.move_player(current_position, speed, move_data)
         move_data = move_internal_initialize(current_position, move_data)
     end    
 
-    local rotation
+    local rotation = nil
     -- stand still if no route found
     if move_data.path_index == 0 then
-        if not move_data.initial_face_vector then
-            rotation = nil
-        else
+        if move_data.initial_face_vector then
             rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         end
         return move_data, { 
@@ -834,9 +805,7 @@ function M.move_player(current_position, speed, move_data)
     while distance(current_position, move_data.path[move_data.path_index]) <= move_data.settings_gameobject_threshold + 1 do
         if move_data.path_index == #move_data.path then
             -- reached next path node
-            if not move_data.initial_face_vector then
-                rotation = nil
-            else
+            if move_data.initial_face_vector then
                 rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
             end
 
@@ -886,15 +855,13 @@ function M.move_player(current_position, speed, move_data)
     local direction_vector = move_data.path[move_data.path_index] - current_position
     direction_vector.z = 0
     direction_vector = vmath.normalize(direction_vector)
-    if not move_data.initial_face_vector then
-        rotation = nil
-    else
+    if move_data.initial_face_vector then
         local rotation_vector = vmath.lerp(0.2 * speed, move_data.current_face_vector, direction_vector)
         rotation = vmath.quat_rotation_z(atan2(rotation_vector.y, rotation_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         move_data.current_face_vector = rotation_vector
     end
     return move_data, {
-        position = (current_position +  direction_vector * speed),
+        position = current_position +  direction_vector * speed,
         rotation = rotation,
         is_reached = false,
         destination_id = move_data.destination_list[move_data.destination_index]
