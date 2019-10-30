@@ -7,16 +7,16 @@ local M = {}
 
 math.randomseed(os.time() - os.clock() * 1000)
 
----- Store node data and it's neighbors
----- Structure: map_node_list[node_id] = { position, type, neighbor_id[]:number }
+--- Store node data and it's neighbors. 
+--- Structure: map_node_list[node_id] = { position, type, neighbor_id[]:number }
 local map_node_list = {}
 
----- Store routes data and line equation info
----- Structure: map_route_list[from_id][to_id] = { a, b, c, distance }
+--- Store routes data and line equation info. 
+--- Structure: map_route_list[from_id][to_id] = { a, b, c, distance }
 local map_route_list = {}
 
----- Store cached data from pathfinder algorithm
----- Structure: pathfinder_cache[from_id][to_id] = { change_number, distance, path[]:number }
+--- Store cached data from pathfinder algorithm. 
+--- Structure: pathfinder_cache[from_id][to_id] = { change_number, distance, path[]:number }
 local pathfinder_cache = {}
 
 local map_node_id_iterator = 0
@@ -48,18 +48,18 @@ local huge = math.huge
 local pi = math.pi
 local atan2 = math.atan2
 
----- routing types
+--- routing types
 M.ROUTETYPE = {}
 M.ROUTETYPE.ONETIME = hash("routetype_onetime")
 M.ROUTETYPE.SHUFFLE = hash("routetype_shuffle")
 M.ROUTETYPE.CYCLE = hash("routetype_cycle")
 
----- Set the main path and move calculation properties, nil inputs will fall back to default values.
--- @param settings_gameobject_threshold (number|nil) optional game object threshold [1]
--- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [4]
--- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [3]
--- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [10]
--- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow enter on route [true]
+--- Set the main path and move calculation properties, nil inputs will fall back to default values.
+--- @param settings_gameobject_threshold (number|nil) optional game object threshold [1]
+--- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [4]
+--- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [3]
+--- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [10]
+--- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow enter on route [true]
 function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness,
                               settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
     settings_main_gameobject_threshold = settings_gameobject_threshold or settings_main_gameobject_threshold
@@ -71,9 +71,9 @@ function M.map_set_properties(settings_gameobject_threshold, settings_path_curve
     end
 end
 
----- Update an existing node position.
--- @param node_id (number) ndoe id
--- @param position (vecotr3) node position
+--- Update an existing node position.
+--- @param node_id (number) node id
+--- @param position (vecotr3) node position
 function M.map_update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
@@ -113,11 +113,11 @@ function M.map_update_node_position(node_id, position)
     map_change_iterator = map_change_iterator + 1
 end
 
----- Set the debug drawing properties, nil inputs will fall back to default values.
--- @param node_color (vector4|nil) optional nodes color [vector4(1, 0, 1, 1)]
--- @param two_way_route_color (vector4|nil) optional two-way routes color [vector4(0, 1, 0, 1)]
--- @param one_way_route_color (vector4|nil) optional one-way routes color [vector4(0, 1, 1, 1)]
--- @param draw_scale (number|nil) optional drawing scale [5]
+--- Set the debug drawing properties, nil inputs will fall back to default values.
+--- @param node_color (vector4|nil) optional nodes color [vector4(1, 0, 1, 1)]
+--- @param two_way_route_color (vector4|nil) optional two-way routes color [vector4(0, 1, 0, 1)]
+--- @param one_way_route_color (vector4|nil) optional one-way routes color [vector4(0, 1, 1, 1)]
+--- @param draw_scale (number|nil) optional drawing scale [5]
 function M.debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
     debug_node_color = node_color or debug_node_color
     debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
@@ -125,14 +125,14 @@ function M.debug_set_properties(node_color, two_way_route_color, one_way_route_c
     debug_draw_scale = draw_scale or debug_draw_scale
 end
 
----- Count size of non-sequential table.
+--- Count size of non-sequential table.
 local function table_size(table)
     local count = 0
     for _ in pairs(table) do count = count + 1 end
     return count
 end
 
----- Add one way route from one node to another.
+--- Add one way route from one node to another.
 local function map_add_oneway_route(source_id, destination_id, route_info)
     if not map_route_list[source_id] then map_route_list[source_id] = {} end
 
@@ -191,7 +191,7 @@ local function map_add_oneway_route(source_id, destination_id, route_info)
     return map_route_list[source_id][destination_id]
 end
 
----- Update node type parameter.
+--- Update node type parameter.
 local function map_update_node_type(node_id)
     if #map_node_list[node_id].neighbor_id == 0 then
         map_node_list[node_id].type = NODETYPE.SINGLE
@@ -202,7 +202,7 @@ local function map_update_node_type(node_id)
     end
 end
 
----- Remove an existing route between two nodes.
+--- Remove an existing route between two nodes.
 local function map_remove_oneway_route(source_id, destination_id)
     map_route_list[source_id][destination_id] = nil
     if table_size(map_route_list[source_id]) == 0 then
@@ -224,9 +224,9 @@ local function map_remove_oneway_route(source_id, destination_id)
     end
 end
 
----- Adding a node at the given position (position.z will get ignored).
--- @param position (vector3) node position
--- @return Newly added node id (number)
+--- Adding a node at the given position (position.z will get ignored).
+--- @param position (vector3) node position
+--- @return (number) Newly added node id
 function M.map_add_node(position)
     assert(position, "You must provide a position")
 
@@ -237,10 +237,10 @@ function M.map_add_node(position)
     return node_id
 end
 
----- Adding a two-way route between two nodes, you can set it as one way or two way.
--- @param source_id (number) source node id
--- @param destination_id (number) destination node id
--- @param is_one_way (boolean|nil) optional is one-way route [false]
+--- Adding a two-way route between two nodes, you can set it as one way or two way.
+--- @param source_id (number) source node id
+--- @param destination_id (number) destination node id
+--- @param is_one_way (boolean|nil) optional is one-way route [false]
 function M.map_add_route(source_id, destination_id, is_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
@@ -259,10 +259,10 @@ function M.map_add_route(source_id, destination_id, is_one_way)
     map_change_iterator = map_change_iterator + 1
 end
 
----- Removing an existing route between two nodes, you can set it to remove just one way or both ways.
--- @param source_id (number) source node id
--- @param destination_id (number) destination node id
--- @param is_remove_one_way (boolean|nil) optional is remove only one-way route [false]
+--- Removing an existing route between two nodes, you can set it to remove just one way or both ways.
+--- @param source_id (number) source node id
+--- @param destination_id (number) destination node id
+--- @param is_remove_one_way (boolean|nil) optional is remove only one-way route [false]
 function M.map_remove_route(source_id, destination_id, is_remove_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
@@ -281,8 +281,8 @@ function M.map_remove_route(source_id, destination_id, is_remove_one_way)
     map_change_iterator = map_change_iterator + 1
 end
 
----- Removing an existing node, attached routes to this node will remove.
--- @param node_id (number) node id
+--- Removing an existing node, attached routes to this node will remove.
+--- @param node_id (number) node id
 function M.map_remove_node(node_id)
     assert(node_id, "You must provide a node id")
 
@@ -301,8 +301,8 @@ function M.map_remove_node(node_id)
     map_change_iterator = map_change_iterator + 1
 end
 
----- Debug draw all map nodes and choose to show node ids or not.
--- @param is_show_ids (boolean|nil) optional is show nodes id [false]
+--- Debug draw all map nodes and choose to show node ids or not.
+--- @param is_show_ids (boolean|nil) optional is show nodes id [false]
 function M.debug_draw_map_nodes(is_show_ids)
     for node_id, node in pairs(map_node_list) do
         if is_show_ids then
@@ -330,7 +330,7 @@ function M.debug_draw_map_nodes(is_show_ids)
     end
 end
 
----- Debug draw all map routes.
+--- Debug draw all map routes.
 function M.debug_draw_map_routes()
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
@@ -349,10 +349,10 @@ function M.debug_draw_map_routes()
     end
 end
 
----- Debug draw player specific path with given color.
--- @param movement_data (table) special movement data table
--- @param color (vector4) path color
--- @param is_show_intersection (boolean|nil) optional is show intersection [false]
+--- Debug draw player specific path with given color.
+--- @param movement_data (table) special movement data table
+--- @param color (vector4) path color
+--- @param is_show_intersection (boolean|nil) optional is show intersection [false]
 function M.debug_draw_player_move(movement_data, color, is_show_intersection)
     assert(movement_data, "You must provide a movement data")
     assert(color, "You must provide a color")
@@ -370,12 +370,12 @@ function M.debug_draw_player_move(movement_data, color, is_show_intersection)
     end
 end
 
----- Calculate distance between two vector3.
+--- Calculate distance between two vector3.
 local function distance(source, destination)
     return sqrt(pow(source.x - destination.x, 2) + pow(source.y - destination.y, 2))
 end
 
----- Shallow copy a table.
+--- Shallow copy a table.
 local function shallow_copy(table)
     local new_table = {}
     for key, value in pairs(table) do
@@ -384,7 +384,7 @@ local function shallow_copy(table)
     return new_table
   end
 
----- Calculate the nearest position on the nearest route on the map from the given position.
+--- Calculate the nearest position on the nearest route on the map from the given position.
 local function calculate_to_nearest_route(position)
     local min_from_id, min_to_id
     local min_near_pos_x, min_near_pos_y
@@ -478,7 +478,7 @@ local function calculate_to_nearest_route(position)
     end
 end
 
----- Calculate graph path inside map from a node to another node.       
+--- Calculate graph path inside map from a node to another node.       
 local function calculate_path(start_id, finish_id)
     local previous = {}
     local distances = {}
@@ -540,7 +540,7 @@ local function calculate_path(start_id, finish_id)
     return path
 end
 
----- Retrive path results from cache or update cache.
+--- Retrive path results from cache or update cache.
 local function fetch_path(change_number, from_id, to_id)
     -- check for same from and to id
     if from_id == to_id then
@@ -582,7 +582,7 @@ local function fetch_path(change_number, from_id, to_id)
     return pathfinder_cache[from_id][to_id]
 end
 
----- Calculate path curvature.
+--- Calculate path curvature.
 local function process_path_curvature(before, current, after, roundness, settings_path_curve_tightness,
                                       settings_path_curve_max_distance_from_corner)
     local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before + current / settings_path_curve_tightness
@@ -619,7 +619,7 @@ local function process_path_curvature(before, current, after, roundness, setting
     end
 end
 
----- Initialize moves from source position to a node with an destination node inside the created map.
+--- Initialize moves from source position to a node with an destination node inside the created map.
 local function move_internal_initialize(source_position, move_data)
     local near_result = calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
@@ -708,20 +708,20 @@ local function move_internal_initialize(source_position, move_data)
     end
 end
 
----- Initialize moves from a source position to destination node list inside the created
--- map and using given threshold and initial face vector as game object initial face direction
--- and path calculate settings considering the route type, the optional value will fall back 
--- to their default values.
--- @param source_position (vector3) position of game object
--- @param destination_list (table) list of destinations id
--- @param route_type (ROUTETYPE|nil) optional route type [ROUTETYPE.ONETIME]
--- @param initial_face_vector (vecotr3|nil) optional initial game object face vector [nil]
--- @param settings_gameobject_threshold (number|nil) optional game object threshold [settings_main_gameobject_threshold]
--- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [settings_main_path_curve_tightness]
--- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [settings_main_path_curve_roundness]
--- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [settings_main_path_curve_max_distance_from_corner]
--- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow to enter on route [settings_main_allow_enter_on_route]
--- @return special movement data (table)
+--- Initialize moves from a source position to destination node list inside the created 
+--- map and using given threshold and initial face vector as game object initial face direction 
+--- and path calculate settings considering the route type, the optional value will fall back 
+--- to their default values.
+--- @param source_position (vector3) position of game object
+--- @param destination_list (table) list of destinations id
+--- @param route_type (ROUTETYPE|nil) optional route type [ROUTETYPE.ONETIME]
+--- @param initial_face_vector (vecotr3|nil) optional initial game object face vector [nil]
+--- @param settings_gameobject_threshold (number|nil) optional game object threshold [settings_main_gameobject_threshold]
+--- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [settings_main_path_curve_tightness]
+--- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [settings_main_path_curve_roundness]
+--- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [settings_main_path_curve_max_distance_from_corner]
+--- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow to enter on route [settings_main_allow_enter_on_route]
+--- @return (table) special movement data
 function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_gameobject_threshold,
                            settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner,
                            settings_allow_enter_on_route)
@@ -765,18 +765,17 @@ function M.move_initialize(source_position, destination_list, route_type, initia
     return move_internal_initialize(source_position, move_data)
 end
 
----- Calculate movements from current position of the game object inside the created map
--- considering given speed, using last calculated movement data.
--- @param current_position (vector3) current position of game object
--- @param speed (number) game object speed
--- @param move_data (table) special movement data table
--- @return new movement data (table)
--- 		* popup - true the screen is a popup
--- @return move result (table) this table includes:
---      * position (vector3) game object next postion
---      * rotation (vector3|nil) game object next rotation if rotation calculation was on
---      * is_reached (boolean) is game object reached a destination
---      * destination_id (number) node id of destination
+--- Calculate movements from current position of the game object inside the created map
+--- considering given speed, using last calculated movement data.
+--- @param current_position (vector3) current position of game object
+--- @param speed (number) game object speed
+--- @param move_data (table) special movement data table
+--- @return (table) new movement data
+--- @return (table) move result this table includes: 
+---      * position (vector3) game object next postion. 
+---      * rotation (vector3|nil) game object next rotation if rotation calculation was on. 
+---      * is_reached (boolean) is game object reached a destination. 
+---      * destination_id (number) node id of destination. 
 function M.move_player(current_position, speed, move_data)
     assert(current_position, "You must provide a current position")
     assert(speed, "You must provide a speed")
