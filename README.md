@@ -1,6 +1,6 @@
 # DefGraph v4.1  
 
-<img src="examples/raw/banner.jpg" alt="defgraph banner" style="max-width:100%;" />
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/hero.jpg" alt="defgraph banner" style="max-width:100%;" />
 
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v4.md">**Changelog and migration guild from version 3.1 to 4.x**</a>  
 * <a href="https://github.com/dev-masih/defgraph/blob/master/Migrate_v3.md">**Changelog and migration guild from version 2 to 3.x**</a>  
@@ -11,14 +11,14 @@ This module contains functions to create a world map as a shape of a graph and t
 You can define a graph with several nodes and routes between them and the extension takes care of finding and moving your game object inside this graph with just one call inside player update function.  
 The gif below shows you this exactly when the destination for all red circles will be selected shuffled between node numbers 6, 18, 14, 2, 4 and 10.  
 
-<img src="examples/raw/static_routing_v4.gif" alt="static routing gif version 4" style="max-width:100%;" />
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/static_routing_v4.gif" alt="static routing gif version 4" style="max-width:100%;" />
 
 As you can see staying on the routes is the number one rule for red circles and they are going to the destination with minimum distance. all you have seen in this gif except for red circles, drawn by defGraph module debug functions and all of them are customizable.  
 defGraph is adaptable to map change so even if you add or remove routes in the middle of the game, extension tries to find the better road for you.  
 also, you can update nodes positions, in another word you can have dynamically moving routes ;)  
 The gif below shows you this exactly when the destination for all red points is cycled between two ends of a dynamic route.  
 
-<img src="examples/raw/dynamic_routing_v4.gif" alt="dynamic routing gif version 4" style="max-width:100%;" />
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/dynamic_routing_v4.gif" alt="dynamic routing gif version 4" style="max-width:100%;" />
 
 This is a community project you are welcome to contribute to it, sending PR, suggest a feature or report a bug.  
 
@@ -43,28 +43,28 @@ This `number` value used as detection that an object is on a route or not. It's 
 #### **Path Curve Tightness:**  
 This `number` value determines how tight a turn on the path should be. The module default value is `4` and minimum for this value should be `2`.  
 
-<img src="examples/raw/tness_2.jpg" alt="Tightness 2"/> | <img src="examples/raw/tness_3.jpg" alt="Tightness 3"/> | <img src="examples/raw/tness_8.jpg" alt="Tightness 8"/>
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/tness_2.jpg" alt="Tightness 2"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/tness_3.jpg" alt="Tightness 3"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/tness_8.jpg" alt="Tightness 8"/>
 :-------------: | :-------------: | :-------------:
 Tightness: 2 | Tightness: 3 | Tightness: 8  
 
 #### **Path Curve Roundness:**  
 This `number` value determines how round a turn on a path should be. The module default value is `3`. If this value equals `0` the path will not have any curve and the value of `settings_path_curve_tightness` and `settings_path_curve_max_distance_from_corner` will get ignored. The higher value for roundness will need more processing power especially when your map nodes are dynamically moving.  
 
-<img src="examples/raw/round_0.jpg" alt="Roundness 0"/> | <img src="examples/raw/round_1.jpg" alt="Roundness 1"/> | <img src="examples/raw/round_5.jpg" alt="Roundness 5"/>
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/round_0.jpg" alt="Roundness 0"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/round_1.jpg" alt="Roundness 1"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/round_5.jpg" alt="Roundness 5"/>
 :-------------: | :-------------: | :-------------:
 Roundness: 0 | Roundness: 1 | Roundness: 5  
 
 #### **Path Curve Max Distance From Corner:**  
 This `number` value determines the maximum value of a turn distance to a corner. The module default value is `10`. If this value equals `0` the path will not have any curve but you should set `settings_path_curve_roundness` to `0` if this is what you want.  
 
-<img src="examples/raw/max_10.jpg" alt="Max 10"/> | <img src="examples/raw/max_30.jpg" alt="Max 30"/> | <img src="examples/raw/max_50.jpg" alt="Max 50"/>
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/max_10.jpg" alt="Max 10"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/max_30.jpg" alt="Max 30"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/max_50.jpg" alt="Max 50"/>
 :-------------: | :-------------: | :-------------:
 Max: 10 | Max: 30 | Max: 50  
 
 #### **Allow Enter on Route:**  
 This `boolean` value determines is a game object can enter a map in the middle of a route or is should enter it from corners only. The module default value is `true`.  
 
-<img src="examples/raw/allow_false.jpg" alt="False"/> | <img src="examples/raw/allow_true.jpg" alt="True"/>
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/allow_false.jpg" alt="False"/> | <img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/allow_true.jpg" alt="True"/>
 :-------------: | :-------------:
 False | True  
 

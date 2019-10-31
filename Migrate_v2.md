@@ -6,6 +6,6 @@
 * `move_player` function now returns two things, first is new movement data as a table that you should overwrite the old one and second is move result table with the structure like { `position`: next position of game object as vector3, `is_reached`: is game object reached the destination as boolean }  
 * `debug_draw_player_move` function now draw game object route through the destination.  
   
-<img src="examples/raw/debug_draw_player_move.png" alt="player move" style="max-width:100%;" />  
+<img src="https://raw.githubusercontent.com/dev-masih/my-media-bin/master/defgraph/debug_draw_player_move.png" alt="player move" style="max-width:100%;" />  
 
 * version 2 is tagged as `v2` in GitHub repository.
