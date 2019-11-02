@@ -7,15 +7,15 @@ local M = {}
 
 math.randomseed(os.time() - os.clock() * 1000)
 
---- Store node data and it's neighbors. 
+--- Store node data and it's neighbors.
 --- Structure: map_node_list[node_id] = { position, type, neighbor_id[]:number }
 local map_node_list = {}
 
---- Store routes data and line equation info. 
+--- Store routes data and line equation info.
 --- Structure: map_route_list[from_id][to_id] = { a, b, c, distance }
 local map_route_list = {}
 
---- Store cached data from pathfinder algorithm. 
+--- Store cached data from pathfinder algorithm.
 --- Structure: pathfinder_cache[from_id][to_id] = { change_number, distance, path[]:number }
 local pathfinder_cache = {}
 
@@ -244,7 +244,7 @@ end
 function M.map_add_route(source_id, destination_id, is_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
-    
+
     assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
     assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
@@ -314,7 +314,7 @@ function M.debug_draw_map_nodes(is_show_ids)
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
         end
-        
+
         if node.type == NODETYPE.DEADEND then
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
             msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
@@ -338,7 +338,7 @@ function M.debug_draw_map_routes()
                 msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
             else
                 msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
-                
+
                 local arrow_postion = 4 / 5 * map_node_list[to_id].position + map_node_list[from_id].position / 5
                 msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(3, 3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
                 msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(-3, -3, 0), color = debug_one_way_route_color } )
@@ -382,7 +382,7 @@ local function shallow_copy(table)
         new_table[key] = value
     end
     return new_table
-  end
+end
 
 --- Calculate the nearest position on the nearest route on the map from the given position.
 local function calculate_to_nearest_route(position)
@@ -412,13 +412,13 @@ local function calculate_to_nearest_route(position)
 
                 -- check if nearest postion is between route nodes
                 if (abs(to_pos.x - from_pos.x) >= abs(to_pos.y - from_pos.y)) then
-                    if(to_pos.x - from_pos.x) > 0 then 
-                        is_between = from_pos.x <= near_pos_x and near_pos_x <= to_pos.x 
+                    if(to_pos.x - from_pos.x) > 0 then
+                        is_between = from_pos.x <= near_pos_x and near_pos_x <= to_pos.x
                     else
                         is_between = to_pos.x <= near_pos_x and near_pos_x <= from_pos.x
                     end
                 else
-                    if (to_pos.y - from_pos.y) > 0 then 
+                    if (to_pos.y - from_pos.y) > 0 then
                         is_between = from_pos.y <= near_pos_y and near_pos_y <= to_pos.y
                     else
                         is_between = to_pos.y <= near_pos_y and near_pos_y <= from_pos.y
@@ -478,7 +478,7 @@ local function calculate_to_nearest_route(position)
     end
 end
 
---- Calculate graph path inside map from a node to another node.       
+--- Calculate graph path inside map from a node to another node.
 local function calculate_path(start_id, finish_id)
     local previous = {}
     local distances = {}
@@ -508,7 +508,7 @@ local function calculate_path(start_id, finish_id)
             while previous[smallest] do
 
                 table.insert(path, 1, { id = smallest, distance = path_distance })
-                
+
                 if not map_route_list[previous[smallest]] then return nil end
                 if not map_route_list[previous[smallest]][smallest] then return nil end
 
@@ -578,7 +578,7 @@ local function fetch_path(change_number, from_id, to_id)
         end
         table.insert(route, 1, path[index].id)
     end
-    
+
     return pathfinder_cache[from_id][to_id]
 end
 
@@ -589,7 +589,7 @@ local function process_path_curvature(before, current, after, roundness, setting
     local R_before = before / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current
     local Q_after = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current + after / settings_path_curve_tightness
     local R_after = current / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * after
-    
+
     if distance(Q_before, before) > settings_path_curve_max_distance_from_corner then
         Q_before = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(before, current), before, current)
     end
@@ -645,7 +645,7 @@ local function move_internal_initialize(source_position, move_data)
         if (near_result.distance > move_data.settings_gameobject_threshold + 1) and move_data.settings_allow_enter_on_route then
             table.insert(position_list, near_result.position_on_route)
         end
-        
+
         if from_path or to_path then
             local from_distance, to_distance
 
@@ -708,9 +708,9 @@ local function move_internal_initialize(source_position, move_data)
     end
 end
 
---- Initialize moves from a source position to destination node list inside the created 
---- map and using given threshold and initial face vector as game object initial face direction 
---- and path calculate settings considering the route type, the optional value will fall back 
+--- Initialize moves from a source position to destination node list inside the created
+--- map and using given threshold and initial face vector as game object initial face direction
+--- and path calculate settings considering the route type, the optional value will fall back
 --- to their default values.
 --- @param source_position (vector3) position of game object
 --- @param destination_list (table) list of destinations id
@@ -771,11 +771,11 @@ end
 --- @param speed (number) game object speed
 --- @param move_data (table) special movement data table
 --- @return (table) new movement data
---- @return (table) move result this table includes: 
----      * position (vector3) game object next postion. 
----      * rotation (vector3|nil) game object next rotation if rotation calculation was on. 
----      * is_reached (boolean) is game object reached a destination. 
----      * destination_id (number) node id of destination. 
+--- @return (table) move result this table includes:
+---      * position (vector3) game object next postion.
+---      * rotation (vector3|nil) game object next rotation if rotation calculation was on.
+---      * is_reached (boolean) is game object reached a destination.
+---      * destination_id (number) node id of destination.
 function M.move_player(current_position, speed, move_data)
     assert(current_position, "You must provide a current position")
     assert(speed, "You must provide a speed")
@@ -784,7 +784,7 @@ function M.move_player(current_position, speed, move_data)
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
         move_data = move_internal_initialize(current_position, move_data)
-    end    
+    end
 
     local rotation = nil
     -- stand still if no route found
@@ -792,7 +792,7 @@ function M.move_player(current_position, speed, move_data)
         if move_data.initial_face_vector then
             rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         end
-        return move_data, { 
+        return move_data, {
             position = current_position,
             rotation = rotation,
             is_reached = false,
