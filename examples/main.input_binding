@@ -1,8 +1,8 @@
 mouse_trigger {
-  input: MOUSE_BUTTON_1
+  input: MOUSE_BUTTON_LEFT
   action: "left_click"
 }
 mouse_trigger {
-  input: MOUSE_BUTTON_2
+  input: MOUSE_BUTTON_RIGHT
   action: "right_click"
 }
