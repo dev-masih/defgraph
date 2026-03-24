@@ -73,7 +73,7 @@ end
 
 --- Update an existing node position.
 --- @param node_id (number) node id
---- @param position (vecotr3) node position
+--- @param position (vector3) node position
 function M.map_update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
@@ -350,21 +350,22 @@ function M.debug_draw_map_routes()
 end
 
 --- Debug draw player specific path with given color.
---- @param movement_data (table) special movement data table
+--- @param self (table) self table
 --- @param color (vector4) path color
 --- @param is_show_intersection (boolean|nil) optional is show intersection [false]
-function M.debug_draw_player_move(movement_data, color, is_show_intersection)
-    assert(movement_data, "You must provide a movement data")
+function M.player_debug_draw(self, color, is_show_intersection)
+
+    assert(self, "You must provide self table")
     assert(color, "You must provide a color")
 
-    if movement_data.path_index ~= 0 then
-        for index = movement_data.path_index, #movement_data.path do
-            if index ~= #movement_data.path then
-                msg.post("@render:", "draw_line", { start_point = movement_data.path[index], end_point = movement_data.path[index + 1], color = color } )
+    if self._defgraph_internal_movement_data.path_index ~= 0 then
+        for index = self._defgraph_internal_movement_data.path_index, #self._defgraph_internal_movement_data.path do
+            if index ~= #self._defgraph_internal_movement_data.path then
+                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index], end_point = self._defgraph_internal_movement_data.path[index + 1], color = color } )
             end
             if is_show_intersection then
-                msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
-                msg.post("@render:", "draw_line", { start_point = movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
+                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
             end
         end
     end
@@ -712,20 +713,30 @@ end
 --- map and using given threshold and initial face vector as game object initial face direction
 --- and path calculate settings considering the route type, the optional value will fall back
 --- to their default values.
---- @param source_position (vector3) position of game object
+--- @alias ROUTETYPE hash
+--- @param self (table) self table
+--- @param go (defold_api.go) current game object
 --- @param destination_list (table) list of destinations id
 --- @param route_type (ROUTETYPE|nil) optional route type [ROUTETYPE.ONETIME]
---- @param initial_face_vector (vecotr3|nil) optional initial game object face vector [nil]
+--- @param initial_face_vector (vector3|nil) optional initial game object face vector [nil]
 --- @param settings_gameobject_threshold (number|nil) optional game object threshold [settings_main_gameobject_threshold]
 --- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [settings_main_path_curve_tightness]
 --- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [settings_main_path_curve_roundness]
 --- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [settings_main_path_curve_max_distance_from_corner]
 --- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow to enter on route [settings_main_allow_enter_on_route]
---- @return (table) special movement data
-function M.move_initialize(source_position, destination_list, route_type, initial_face_vector, settings_gameobject_threshold,
-                           settings_path_curve_tightness, settings_path_curve_roundness, settings_path_curve_max_distance_from_corner,
-                           settings_allow_enter_on_route)
-    assert(source_position, "You must provide a source position")
+function M.player_initialization(self,
+                                 go,
+                                 destination_list,
+                                 route_type,
+                                 initial_face_vector,
+                                 settings_gameobject_threshold,
+                                 settings_path_curve_tightness,
+                                 settings_path_curve_roundness,
+                                 settings_path_curve_max_distance_from_corner,
+                                 settings_allow_enter_on_route)
+
+    assert(self, "You must provide self table")
+    assert(go, "You must provide a game object")
     assert(destination_list, "You must provide a destination list")
 
     route_type = route_type or M.ROUTETYPE.ONETIME
@@ -762,24 +773,26 @@ function M.move_initialize(source_position, destination_list, route_type, initia
         settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner
     }
 
-    return move_internal_initialize(source_position, move_data)
+    self._defgraph_internal_movement_data = move_internal_initialize(go.get_position(), move_data)
 end
 
 --- Calculate movements from current position of the game object inside the created map
 --- considering given speed, using last calculated movement data.
---- @param current_position (vector3) current position of game object
---- @param speed (number) game object speed
---- @param move_data (table) special movement data table
---- @return (table) new movement data
+--- @param self (table) self table
+--- @param go (defold_api.go) current game object
+--- @param speed (number) player speed
 --- @return (table) move result this table includes:
 ---      * position (vector3) game object next postion.
 ---      * rotation (vector3|nil) game object next rotation if rotation calculation was on.
 ---      * is_reached (boolean) is game object reached a destination.
 ---      * destination_id (number) node id of destination.
-function M.move_player(current_position, speed, move_data)
-    assert(current_position, "You must provide a current position")
-    assert(speed, "You must provide a speed")
-    assert(move_data, "You must provide a move data")
+function M.player_update(self, go, speed)
+
+    assert(self, "You must provide self table")
+    assert(go, "You must provide a game object")
+
+    local current_position = go.get_position()
+    local move_data = self._defgraph_internal_movement_data
 
     -- check for map updates
     if move_data.change_number ~= map_change_iterator then
@@ -792,7 +805,9 @@ function M.move_player(current_position, speed, move_data)
         if move_data.initial_face_vector then
             rotation = vmath.quat_rotation_z(atan2(move_data.current_face_vector.y, move_data.current_face_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         end
-        return move_data, {
+
+        self._defgraph_internal_movement_data = move_data
+        return {
             position = current_position,
             rotation = rotation,
             is_reached = false,
@@ -838,7 +853,8 @@ function M.move_player(current_position, speed, move_data)
                 end
             end
 
-            return move_data, {
+            self._defgraph_internal_movement_data = move_data
+            return {
                 position = current_position,
                 rotation = rotation,
                 is_reached = is_reached,
@@ -859,7 +875,9 @@ function M.move_player(current_position, speed, move_data)
         rotation = vmath.quat_rotation_z(atan2(rotation_vector.y, rotation_vector.x) - atan2(move_data.initial_face_vector.y, move_data.initial_face_vector.x))
         move_data.current_face_vector = rotation_vector
     end
-    return move_data, {
+
+    self._defgraph_internal_movement_data = move_data
+    return {
         position = current_position +  direction_vector * speed,
         rotation = rotation,
         is_reached = false,

@@ -2,27 +2,24 @@
 local defgraph = require "defgraph.defgraph"
 
 function init(self)
-	-- initilize variables
-	local my_position = go.get_position()
-	self.speed = 100.0
-	
-	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE)
+
+	-- initializing defgraph player
+	defgraph.player_initialization(self, go, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE)
 end
 
 function update(self, dt)
-	-- move go inside given map and update move_data
-	local my_position = go.get_position()
-	self.movement_data, self.move_result = defgraph.move_player(my_position, self.speed * dt, self.movement_data)
+
+	-- defgraph player calculation loop
+	self.update_result = defgraph.player_update(self, go, 100 * dt)
 
 	-- update go postion based of returned result
-	go.set_position(self.move_result.position)
-	
+	go.set_position(self.update_result.position)
+
 	-- you can check if go reached to the destination
-	if self.move_result.is_reached then
-		print("I'm at destination id : " .. self.move_result.destination_id)
+	if self.update_result.is_reached then
+		print("I'm at destination id : " .. self.update_result.destination_id)
 	end
-	
-	-- debug draw movement_data with specific color
-	defgraph.debug_draw_player_move(self.movement_data, vmath.vector4(1, 1, 0, 1))
+
+	-- debug draw defgraph player with specific color
+	defgraph.player_debug_draw(self, vmath.vector4(1, 1, 0, 1))
 end

@@ -2,27 +2,24 @@
 local defgraph = require "defgraph.defgraph"
 
 function init(self)
-	-- initilize variables
-	local my_position = go.get_position()
-	self.speed = 200.0
-	
-	-- initialize movement for go inside given map
-	self.movement_data = defgraph.move_initialize(my_position, { 36, 1 }, defgraph.ROUTETYPE.CYCLE, vmath.vector3(0, 1, 0))
+
+	-- initializing defgraph player with face direction
+	defgraph.player_initialization(self, go, { 36, 1 }, defgraph.ROUTETYPE.CYCLE, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
-	-- move go inside given map and update move_data
-	local my_position = go.get_position()
-	self.movement_data, self.move_result = defgraph.move_player(my_position, self.speed * dt, self.movement_data)
+
+	-- defgraph player calculation loop
+	self.update_result = defgraph.player_update(self, go, 100 * dt)
 
 	-- update go postion based of returned result
-	go.set_position(self.move_result.position)
+	go.set_position(self.update_result.position)
 
 	-- update go rotation based of returned result
-	go.set_rotation(self.move_result.rotation)
+	go.set_rotation(self.update_result.rotation)
 
 	-- you can check if go reached to the destination
-	if self.move_result.is_reached then
-		print("I'm at destination id: " .. self.move_result.destination_id)
+	if self.update_result.is_reached then
+		print("I'm at destination id: " .. self.update_result.destination_id)
 	end
 end
