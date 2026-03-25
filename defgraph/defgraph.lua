@@ -353,7 +353,7 @@ end
 --- @param self (table) self table
 --- @param color (vector4) path color
 --- @param is_show_intersection (boolean|nil) optional is show intersection [false]
-function M.player_debug_draw(self, color, is_show_intersection)
+function M.debug_draw_player(self, color, is_show_intersection)
 
     assert(self, "You must provide self table")
     assert(color, "You must provide a color")
@@ -483,62 +483,57 @@ end
 local function calculate_path(start_id, finish_id)
     local previous = {}
     local distances = {}
-    local nodes = {}
-    local path = nil
-    local path_distance = 0
+    local unvisited = {}
 
     for node_id in pairs(map_node_list) do
-        if node_id == start_id then
-            distances[node_id] = 0
-        else
-            distances[node_id] = huge
-        end
-
-        table.insert(nodes, node_id)
+        distances[node_id] = (node_id == start_id) and 0 or huge
+        unvisited[#unvisited + 1] = node_id
     end
 
-    while #nodes ~= 0 do
-        table.sort(nodes, function(x, y) return distances[x] < distances[y] end)
+    while #unvisited > 0 do
+        table.sort(unvisited, function(a, b)
+            return distances[a] < distances[b]
+        end)
 
-        local smallest = nodes[1]
-        table.remove(nodes, 1)
+        local current = table.remove(unvisited, 1)
 
-        if smallest == finish_id then
-            path = {}
-            path_distance = 0
-            while previous[smallest] do
+        if current == finish_id then
+            local path = {}
+            local total = 0
+            local node = finish_id
 
-                table.insert(path, 1, { id = smallest, distance = path_distance })
+            while previous[node] do
+                table.insert(path, 1, { id = node, distance = total })
 
-                if not map_route_list[previous[smallest]] then return nil end
-                if not map_route_list[previous[smallest]][smallest] then return nil end
+                local prev = previous[node]
+                local route = map_route_list[prev] and map_route_list[prev][node]
+                if not route then return nil end
 
-                path_distance = path_distance + map_route_list[previous[smallest]][smallest].distance
-                smallest = previous[smallest];
+                total = total + route.distance
+                node = prev
             end
-            if path_distance ~= 0 then
-                table.insert(path, 1, { id = smallest, distance = path_distance })
-            end
-            break
+
+            table.insert(path, 1, { id = node, distance = total })
+            return path
         end
 
-        if distances[smallest] == huge then
-            break;
+        if distances[current] == huge then
+            return nil
         end
 
-        if map_route_list[smallest] then
-            for to_id, neighbor in pairs(map_route_list[smallest]) do
-                local alt = distances[smallest] + neighbor.distance
+        local neighbors = map_route_list[current]
+        if neighbors then
+            for to_id, route in pairs(neighbors) do
+                local alt = distances[current] + route.distance
                 if alt < distances[to_id] then
-                    distances[to_id] = alt;
-                    previous[to_id] = smallest;
+                    distances[to_id] = alt
+                    previous[to_id] = current
                 end
             end
         end
-
     end
 
-    return path
+    return nil
 end
 
 --- Retrive path results from cache or update cache.
