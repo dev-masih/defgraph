@@ -12,7 +12,7 @@ math.randomseed(os.time() - os.clock() * 1000)
 local map_node_list = {}
 
 --- Store routes data and line equation info.
---- Structure: map_route_list[from_id][to_id] = { a, b, c, distance }
+--- Structure: map_route_list[from_id][to_id] = { a, b, c, distance, ab_len2, inv_ab_len }
 local map_route_list = {}
 
 --- Store cached data from pathfinder algorithm.
@@ -42,10 +42,8 @@ local settings_main_allow_enter_on_route = true
 
 -- math functions
 local sqrt = math.sqrt
-local pow = math.pow
 local abs = math.abs
 local huge = math.huge
-local pi = math.pi
 local atan2 = math.atan2
 
 --- routing types
@@ -71,45 +69,105 @@ function M.map_set_properties(settings_gameobject_threshold, settings_path_curve
     end
 end
 
+--- Calculate distance between two vector3.
+local function distance(source, destination)
+    local dx = source.x - destination.x
+    local dy = source.y - destination.y
+    return sqrt(dx * dx + dy * dy)
+end
+
+local function heap_push(heap, node_id, dist)
+    local i = #heap + 1
+    heap[i] = { id = node_id, dist = dist }
+
+    while i > 1 do
+        local p = math.floor(i / 2)
+        if heap[p].dist <= heap[i].dist then break end
+        heap[p], heap[i] = heap[i], heap[p]
+        i = p
+    end
+end
+
+local function heap_pop(heap)
+    local n = #heap
+    if n == 0 then return nil, nil end
+
+    local root = heap[1]
+    local last = heap[n]
+    heap[n] = nil
+
+    if n > 1 then
+        heap[1] = last
+        local i = 1
+        while true do
+            local l = i * 2
+            local r = l + 1
+            local smallest = i
+
+            if l <= #heap and heap[l].dist < heap[smallest].dist then
+                smallest = l
+            end
+            if r <= #heap and heap[r].dist < heap[smallest].dist then
+                smallest = r
+            end
+            if smallest == i then break end
+
+            heap[i], heap[smallest] = heap[smallest], heap[i]
+            i = smallest
+        end
+    end
+
+    return root.id, root.dist
+end
+
 --- Update an existing node position.
 --- @param node_id (number) node id
 --- @param position (vector3) node position
 function M.map_update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
-
     assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
 
-    map_node_list[node_id].position = position
+    map_node_list[node_id].position = vmath.vector3(position.x, position.y, 0)
+    local neighbors = map_node_list[node_id].neighbor_id
 
-    for from_id, routes in pairs(map_route_list) do
-        for to_id, route in pairs(routes) do
-            if from_id == node_id or to_id == node_id then
-                -- line equation: ax + by + c = 0
-                local a, b, c
-                local from_pos = map_node_list[from_id].position
-                local to_pos = map_node_list[to_id].position
-                if from_pos.x ~= to_pos.x then
-                    --non vertical
-                    a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
-                    b = 1
-                    c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
-                else
-                    --vertical
-                    a = 1
-                    b = 0
-                    c = -from_pos.x
-                end
-                map_route_list[from_id][to_id] = {
+    for i = 1, #neighbors do
+        local a_id = node_id
+        local b_id = neighbors[i]
+
+        for _ = 1, 2 do
+            local from_pos = map_node_list[a_id].position
+            local to_pos   = map_node_list[b_id].position
+
+            local a, b, c
+            if from_pos.x ~= to_pos.x then
+                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+                b = 1
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+            else
+                a = 1
+                b = 0
+                c = -from_pos.x
+            end
+
+            local ab_len2 = a * a + b * b
+            local inv_ab_len = 1 / sqrt(ab_len2)
+
+            if map_route_list[a_id] and map_route_list[a_id][b_id] then
+                map_route_list[a_id][b_id] = {
                     a = a,
                     b = b,
                     c = c,
-                    distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
+                    distance = distance(from_pos, to_pos),
+                    ab_len2 = ab_len2,
+                    inv_ab_len = inv_ab_len,
                 }
             end
+
+            a_id, b_id = b_id, a_id
         end
     end
-    -- map shape is changed
+
     map_change_iterator = map_change_iterator + 1
 end
 
@@ -138,26 +196,30 @@ local function map_add_oneway_route(source_id, destination_id, route_info)
 
     if not map_route_list[source_id][destination_id] then
         if not route_info then
-            -- line equation: ax + by + c = 0
-            local a, b, c
             local from_pos = map_node_list[source_id].position
-            local to_pos = map_node_list[destination_id].position
+            local to_pos   = map_node_list[destination_id].position
+
+            local a, b, c
             if from_pos.x ~= to_pos.x then
-                --non vertical
-                a = (from_pos.y - to_pos.y)/(to_pos.x - from_pos.x)
+                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
                 b = 1
-                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y))/(to_pos.x - from_pos.x)
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
             else
-                --vertical
                 a = 1
                 b = 0
                 c = -from_pos.x
             end
+
+            local ab_len2 = a * a + b * b
+            local inv_ab_len = 1 / sqrt(ab_len2)
+
             map_route_list[source_id][destination_id] = {
                 a = a,
                 b = b,
                 c = c,
-                distance = sqrt(pow(from_pos.x - to_pos.x, 2) + pow(from_pos.y - to_pos.y, 2))
+                distance = distance(from_pos, to_pos),
+                ab_len2 = ab_len2,
+                inv_ab_len = inv_ab_len,
             }
         else
             map_route_list[source_id][destination_id] = route_info
@@ -285,18 +347,28 @@ end
 --- @param node_id (number) node id
 function M.map_remove_node(node_id)
     assert(node_id, "You must provide a node id")
-
     assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
 
+    local to_remove = {}
+
     for from_id, routes in pairs(map_route_list) do
-        for to_id, route in pairs(routes) do
+        for to_id in pairs(routes) do
             if from_id == node_id or to_id == node_id then
-                map_remove_oneway_route(from_id, to_id)
-                map_update_node_type(from_id)
-                map_update_node_type(to_id)
+                to_remove[#to_remove + 1] = { from_id = from_id, to_id = to_id }
             end
         end
     end
+
+    for i = 1, #to_remove do
+        local from_id = to_remove[i].from_id
+        local to_id   = to_remove[i].to_id
+
+        map_remove_oneway_route(from_id, to_id)
+
+        if map_node_list[from_id] then map_update_node_type(from_id) end
+        if map_node_list[to_id]   then map_update_node_type(to_id)   end
+    end
+
     map_node_list[node_id] = nil
     map_change_iterator = map_change_iterator + 1
 end
@@ -371,11 +443,6 @@ function M.debug_draw_player(self, color, is_show_intersection)
     end
 end
 
---- Calculate distance between two vector3.
-local function distance(source, destination)
-    return sqrt(pow(source.x - destination.x, 2) + pow(source.y - destination.y, 2))
-end
-
 --- Shallow copy a table.
 local function shallow_copy(table)
     local new_table = {}
@@ -387,153 +454,148 @@ end
 
 --- Calculate the nearest position on the nearest route on the map from the given position.
 local function calculate_to_nearest_route(position)
-    local min_from_id, min_to_id
-    local min_near_pos_x, min_near_pos_y
+    local min_from, min_to
+    local min_x, min_y
     local min_dist = huge
-    local already_calculated = {}
+
+    local visited = {}
 
     for from_id, routes in pairs(map_route_list) do
         for to_id, route in pairs(routes) do
-            if not (already_calculated[from_id] and already_calculated[from_id][to_id]) then
-
-                local is_between, near_pos_x, near_pos_y, dist, dist_from_id, dist_to_id
+            if not (visited[from_id] and visited[from_id][to_id]) then
                 local from_pos = map_node_list[from_id].position
-                local to_pos = map_node_list[to_id].position
+                local to_pos   = map_node_list[to_id].position
 
-                -- calculate nearest position for every route to it's line equation
+                local near_x, near_y
+                local is_between
+
                 if from_pos.x ~= to_pos.x then
-                    --non vertical
-                    near_pos_x = (route.b * ((route.b * position.x) - (route.a * position.y)) - (route.a * route.c))/((route.a * route.a) + (route.b * route.b))
-                    near_pos_y = (route.a * ((-route.b * position.x) + (route.a * position.y)) - (route.b * route.c))/((route.a * route.a) + (route.b * route.b))
+                    local denom2 = route.ab_len2 or (route.a * route.a + route.b * route.b)
+                    local bx_ax  = (route.b * position.x) - (route.a * position.y)
+
+                    near_x = (route.b * bx_ax - route.a * route.c) / denom2
+                    near_y = (route.a * (-route.b * position.x + route.a * position.y) - route.b * route.c) / denom2
                 else
-                    --vertical
-                    near_pos_x = from_pos.x
-                    near_pos_y = position.y
+                    near_x = from_pos.x
+                    near_y = position.y
                 end
 
-                -- check if nearest postion is between route nodes
-                if (abs(to_pos.x - from_pos.x) >= abs(to_pos.y - from_pos.y)) then
-                    if(to_pos.x - from_pos.x) > 0 then
-                        is_between = from_pos.x <= near_pos_x and near_pos_x <= to_pos.x
+                if abs(to_pos.x - from_pos.x) >= abs(to_pos.y - from_pos.y) then
+                    if to_pos.x > from_pos.x then
+                        is_between = (from_pos.x <= near_x and near_x <= to_pos.x)
                     else
-                        is_between = to_pos.x <= near_pos_x and near_pos_x <= from_pos.x
+                        is_between = (to_pos.x <= near_x and near_x <= from_pos.x)
                     end
                 else
-                    if (to_pos.y - from_pos.y) > 0 then
-                        is_between = from_pos.y <= near_pos_y and near_pos_y <= to_pos.y
+                    if to_pos.y > from_pos.y then
+                        is_between = (from_pos.y <= near_y and near_y <= to_pos.y)
                     else
-                        is_between = to_pos.y <= near_pos_y and near_pos_y <= from_pos.y
+                        is_between = (to_pos.y <= near_y and near_y <= from_pos.y)
                     end
                 end
 
-                -- calculate minimum distance to every routes
+                local dist
                 if is_between then
-                    dist = abs((route.a * position.x) + (route.b * position.y) + route.c)/sqrt((route.a * route.a) + (route.b * route.b))
-                else
-                    dist_from_id = distance(position, from_pos)
-                    dist_to_id = distance(position, to_pos)
-                    if dist_from_id < dist_to_id then
-                        dist = dist_from_id
-                    else
-                        dist = dist_to_id
+                    local inv_len = route.inv_ab_len
+                    if not inv_len then
+                        local denom2 = route.ab_len2 or (route.a * route.a + route.b * route.b)
+                        inv_len = 1 / sqrt(denom2)
+                        route.ab_len2 = denom2
+                        route.inv_ab_len = inv_len
                     end
+                    dist = abs(route.a * position.x + route.b * position.y + route.c) * inv_len
+                else
+                    local d1 = distance(position, from_pos)
+                    local d2 = distance(position, to_pos)
+                    dist = (d1 < d2) and d1 or d2
                 end
 
-                -- update min values if calculated distance is lower
                 if dist < min_dist then
+                    min_dist = dist
                     if is_between then
-                        min_dist = dist
-                        min_near_pos_x = near_pos_x
-                        min_near_pos_y = near_pos_y
+                        min_x, min_y = near_x, near_y
                     else
-                        if dist_from_id < dist_to_id then
-                            min_dist = dist_from_id
-                            min_near_pos_x = from_pos.x
-                            min_near_pos_y = from_pos.y
+                        if distance(position, from_pos) < distance(position, to_pos) then
+                            min_x, min_y = from_pos.x, from_pos.y
                         else
-                            min_dist = dist_to_id
-                            min_near_pos_x = to_pos.x
-                            min_near_pos_y = to_pos.y
+                            min_x, min_y = to_pos.x, to_pos.y
                         end
                     end
-                    min_from_id = from_id
-                    min_to_id = to_id
+                    min_from, min_to = from_id, to_id
                 end
 
-                if not already_calculated[to_id] then already_calculated[to_id] = {} end
-                already_calculated[to_id][from_id] = 1
+                visited[from_id] = visited[from_id] or {}
+                visited[from_id][to_id] = true
             end
         end
     end
 
     if min_dist == huge then
-        -- if no route exists
         return nil
-    else
-        return {
-            position_on_route = vmath.vector3(min_near_pos_x, min_near_pos_y, 0),
-            distance = min_dist,
-            route_from_id = min_from_id,
-            route_to_id = min_to_id
-        }
     end
+
+    return {
+        position_on_route = vmath.vector3(min_x, min_y, 0),
+        distance = min_dist,
+        route_from_id = min_from,
+        route_to_id = min_to
+    }
 end
 
 --- Calculate graph path inside map from a node to another node.
 local function calculate_path(start_id, finish_id)
-    local previous = {}
+    local previous  = {}
     local distances = {}
-    local unvisited = {}
+    local visited   = {}
+    local heap      = {}
 
     for node_id in pairs(map_node_list) do
-        distances[node_id] = (node_id == start_id) and 0 or huge
-        unvisited[#unvisited + 1] = node_id
+        distances[node_id] = huge
     end
 
-    while #unvisited > 0 do
-        table.sort(unvisited, function(a, b)
-            return distances[a] < distances[b]
-        end)
+    distances[start_id] = 0
+    heap_push(heap, start_id, 0)
 
-        local current = table.remove(unvisited, 1)
-
-        if current == finish_id then
-            local path = {}
-            local total = 0
-            local node = finish_id
-
-            while previous[node] do
-                table.insert(path, 1, { id = node, distance = total })
-
-                local prev = previous[node]
-                local route = map_route_list[prev] and map_route_list[prev][node]
-                if not route then return nil end
-
-                total = total + route.distance
-                node = prev
-            end
-
-            table.insert(path, 1, { id = node, distance = total })
-            return path
-        end
-
-        if distances[current] == huge then
+    while true do
+        local current, current_dist = heap_pop(heap)
+        if not current then
             return nil
         end
 
-        local neighbors = map_route_list[current]
-        if neighbors then
-            for to_id, route in pairs(neighbors) do
-                local alt = distances[current] + route.distance
-                if alt < distances[to_id] then
-                    distances[to_id] = alt
-                    previous[to_id] = current
+        if not visited[current] then
+            visited[current] = true
+
+            if current == finish_id then
+                local path = {}
+                local total = 0
+                local node = finish_id
+
+                while previous[node] do
+                    table.insert(path, 1, { id = node, distance = total })
+                    local prev = previous[node]
+                    local route = map_route_list[prev] and map_route_list[prev][node]
+                    if not route then return nil end
+                    total = total + route.distance
+                    node = prev
+                end
+
+                table.insert(path, 1, { id = node, distance = total })
+                return path
+            end
+
+            local neighbors = map_route_list[current]
+            if neighbors then
+                for to_id, route in pairs(neighbors) do
+                    local alt = current_dist + route.distance
+                    if alt < distances[to_id] then
+                        distances[to_id] = alt
+                        previous[to_id] = current
+                        heap_push(heap, to_id, alt)
+                    end
                 end
             end
         end
     end
-
-    return nil
 end
 
 --- Retrive path results from cache or update cache.
@@ -579,12 +641,20 @@ local function fetch_path(change_number, from_id, to_id)
 end
 
 --- Calculate path curvature.
-local function process_path_curvature(before, current, after, roundness, settings_path_curve_tightness,
-                                      settings_path_curve_max_distance_from_corner)
-    local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before + current / settings_path_curve_tightness
-    local R_before = before / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current
-    local Q_after = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current + after / settings_path_curve_tightness
-    local R_after = current / settings_path_curve_tightness + (settings_path_curve_tightness - 1) / settings_path_curve_tightness * after
+local function process_path_curvature(before, current, after, roundness,
+                                      settings_path_curve_tightness,
+                                      settings_path_curve_max_distance_from_corner,
+                                      out_list)
+    out_list = out_list or {}
+
+    local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before +
+                     current / settings_path_curve_tightness
+    local R_before = before / settings_path_curve_tightness +
+                     (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current
+    local Q_after  = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current +
+                     after / settings_path_curve_tightness
+    local R_after  = current / settings_path_curve_tightness +
+                     (settings_path_curve_tightness - 1) / settings_path_curve_tightness * after
 
     if distance(Q_before, before) > settings_path_curve_max_distance_from_corner then
         Q_before = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(before, current), before, current)
@@ -600,18 +670,19 @@ local function process_path_curvature(before, current, after, roundness, setting
     end
 
     if roundness ~= 1 then
-        local list_before = process_path_curvature(Q_before, R_before, Q_after, roundness - 1, settings_path_curve_tightness,
-                                                        settings_path_curve_max_distance_from_corner)
-        local list_after = process_path_curvature(R_before, Q_after, R_after, roundness - 1, settings_path_curve_tightness,
-                                                        settings_path_curve_max_distance_from_corner)
-
-        for key, value in pairs(list_after) do
-            table.insert(list_before, value)
-        end
-
-        return list_before, Q_before, R_after
+        process_path_curvature(Q_before, R_before, Q_after, roundness - 1,
+                               settings_path_curve_tightness,
+                               settings_path_curve_max_distance_from_corner,
+                               out_list)
+        process_path_curvature(R_before, Q_after, R_after, roundness - 1,
+                               settings_path_curve_tightness,
+                               settings_path_curve_max_distance_from_corner,
+                               out_list)
+        return out_list, Q_before, R_after
     else
-        return {R_before, Q_after}, Q_before, R_after
+        out_list[#out_list + 1] = R_before
+        out_list[#out_list + 1] = Q_after
+        return out_list, Q_before, R_after
     end
 end
 
@@ -677,8 +748,10 @@ local function move_internal_initialize(source_position, move_data)
 
             for i = 2, #position_list - 1 do
                 local partial_position_list, Q_before, R_after = process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1],
-                                                                 move_data.settings_path_curve_roundness, move_data.settings_path_curve_tightness,
-                                                                 move_data.settings_path_curve_max_distance_from_corner)
+                           move_data.settings_path_curve_roundness,
+                           move_data.settings_path_curve_tightness,
+                           move_data.settings_path_curve_max_distance_from_corner,
+                           {})
 
                 if i == 2 then
                     table.insert(move_data.path, Q_before)
