@@ -111,12 +111,6 @@ local function copy_table(table)
     return new_table
 end
 
-local function table_size(table)
-    local count = 0
-    for _ in pairs(table) do count = count + 1 end
-    return count
-end
-
 --- Set the main path and move calculation properties, nil inputs will fall back to default values.
 --- @param settings_gameobject_threshold (number|nil) optional game object threshold [1]
 --- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [4]
@@ -262,9 +256,11 @@ end
 --- Remove an existing route between two nodes.
 local function map_remove_oneway_route(source_id, destination_id)
     map_route_list[source_id][destination_id] = nil
-    if table_size(map_route_list[source_id]) == 0 then
+
+    if next(map_route_list[source_id]) == nil then
         map_route_list[source_id] = nil
     end
+
     if not (map_route_list[destination_id] and map_route_list[destination_id][source_id]) then
         for i = 1, #map_node_list[destination_id].neighbor_id do
             if map_node_list[destination_id].neighbor_id[i] == source_id then
