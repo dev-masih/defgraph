@@ -4,8 +4,10 @@ local defgraph = require "defgraph.defgraph"
 function init(self)
     msg.post(".", "acquire_input_focus")
     
+    self.map = defgraph.create_or_get_map("MyMap")
+
     -- change map properties
-    defgraph.map_set_properties(15, 3, 1, 100, true)
+    self.map:set_properties(15, 3, 1, 100, true)
 
     self.node_ids = {}
     self.node_positions = {}
@@ -27,14 +29,14 @@ function init(self)
             is_up = true
         end
 
-        table.insert(self.node_ids, defgraph.map_add_node(start_position))
+        table.insert(self.node_ids, self.map:add_node(start_position))
         table.insert(self.node_positions, start_position)
         table.insert(self.node_goas_up, is_up)
     end
 
     -- defining routes between nodes
     for i = 1, #self.node_ids - 1 do
-        defgraph.map_add_route(self.node_ids[i], self.node_ids[i + 1])
+        self.map:add_route(self.node_ids[i], self.node_ids[i + 1])
     end
 end
 
@@ -59,11 +61,11 @@ function update(self, dt)
                 self.node_goas_up[i] = true
             end
         end
-        defgraph.map_update_node_position(self.node_ids[i], self.node_positions[i])
+        self.map:update_node_position(self.node_ids[i], self.node_positions[i])
     end
 
     -- draw debug info of nodes and routes
-    defgraph.debug_draw_map_routes()
+    self.map:debug_draw_map_routes()
 
     msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 630, 0) } )
     msg.post("@render:", "draw_text", { text = "destinations : cycle between { 36, 1 }", position = vmath.vector3(20, 610, 0) } )
