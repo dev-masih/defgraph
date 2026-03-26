@@ -16,24 +16,15 @@ local map_node_list = {}
 local map_route_list = {}
 
 --- store cached data from pathfinder algorithm.
---- structure: pathfinder_cache[from_id][to_id] = { distance, path[]:number }
+--- structure: pathfinder_cache[from_id][to_id] = {
+---   distance,
+---   path[]:node_id,
+---   node_versions[]:number,
+---   route_versions[]:number
+--- }
 local pathfinder_cache = {}
 
 local map_node_id_iterator = 0
-
--- per-node versioning for fine-grained cache invalidation
-local node_version = {}
-
-local function bump_node_version(node_id)
-    node_version[node_id] = (node_version[node_id] or 0) + 1
-end
-
-
-local NODETYPE = {
-    SINGLE = hash("defgraph_nodetype_single"),
-    DEADEND = hash("defgraph_nodetype_deadend"),
-    INTERSECTION = hash("defgraph_nodetype_intersection")
-}
 
 -- color vectors and scale of debug drawing
 local debug_node_color = vmath.vector4(1, 0, 1, 1)
@@ -41,24 +32,30 @@ local debug_two_way_route_color = vmath.vector4(0, 1, 0, 1)
 local debug_one_way_route_color = vmath.vector4(0, 1, 1, 1)
 local debug_draw_scale = 5
 
+local NODETYPE = {
+    SINGLE       = hash("defgraph_nodetype_single"),
+    DEADEND      = hash("defgraph_nodetype_deadend"),
+    INTERSECTION = hash("defgraph_nodetype_intersection")
+}
+
 -- main settings
-local settings_main_gameobject_threshold = 1
-local settings_main_path_curve_tightness = 4
-local settings_main_path_curve_roundness = 3
+local settings_main_gameobject_threshold                = 1
+local settings_main_path_curve_tightness               = 4
+local settings_main_path_curve_roundness               = 3
 local settings_main_path_curve_max_distance_from_corner = 10
-local settings_main_allow_enter_on_route = true
+local settings_main_allow_enter_on_route               = true
 
 -- math functions
-local sqrt = math.sqrt
-local abs = math.abs
-local huge = math.huge
+local sqrt  = math.sqrt
+local abs   = math.abs
+local huge  = math.huge
 local atan2 = math.atan2
 
 --- routing types
 M.ROUTETYPE = {
     ONETIME = hash("defgraph_routetype_onetime"),
     SHUFFLE = hash("defgraph_routetype_shuffle"),
-    CYCLE = hash("defgraph_routetype_cycle")
+    CYCLE   = hash("defgraph_routetype_cycle")
 }
 
 --- utility local functions
@@ -112,34 +109,108 @@ local function heap_pop(heap)
     return root.id, root.dist
 end
 
-local function copy_table(table)
+local function copy_table(t)
     local new_table = {}
-    for key, value in pairs(table) do
+    for key, value in pairs(t) do
         new_table[key] = value
     end
     return new_table
 end
 
+----------------------------------------------------------------------
+-- Fine-grained versioning
+----------------------------------------------------------------------
+
+-- per-node versioning
+local node_version = {}
+
+local function bump_node_version(node_id)
+    node_version[node_id] = (node_version[node_id] or 0) + 1
+end
+
+-- per-route versioning: route_version[from_id][to_id] = int
+local route_version = {}
+
+local function bump_route_version(from_id, to_id)
+    local row = route_version[from_id]
+    if not row then
+        row = {}
+        route_version[from_id] = row
+    end
+    row[to_id] = (row[to_id] or 0) + 1
+end
+
+-- compute a combined version for a path defined by node_ids[]
+local function compute_path_version(node_ids)
+    local maxv = 0
+    local nv = node_version
+    local rv = route_version
+
+    for i = 1, #node_ids do
+        local id = node_ids[i]
+        local v = nv[id] or 0
+        if v > maxv then maxv = v end
+    end
+
+    for i = 1, #node_ids - 1 do
+        local a = node_ids[i]
+        local b = node_ids[i + 1]
+        local row = rv[a]
+        local v = row and row[b] or 0
+        if v > maxv then maxv = v end
+    end
+
+    return maxv
+end
+
+local function is_path_cache_valid(cache)
+    local ids = cache.path
+    local nv  = cache.node_versions
+    local rv  = cache.route_versions
+
+    local current_nv = node_version
+    local current_rv = route_version
+
+    for i = 1, #ids do
+        if (current_nv[ids[i]] or 0) ~= (nv[i] or 0) then
+            return false
+        end
+    end
+
+    for i = 1, #ids - 1 do
+        local a = ids[i]
+        local b = ids[i + 1]
+        local row = current_rv[a]
+        local v = row and row[b] or 0
+        if v ~= (rv[i] or 0) then
+            return false
+        end
+    end
+
+    return true
+end
+
+----------------------------------------------------------------------
+-- Map settings
+----------------------------------------------------------------------
+
 --- Set the main path and move calculation properties, nil inputs will fall back to default values.
---- @param settings_gameobject_threshold (number|nil) optional game object threshold [1]
---- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [4]
---- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [3]
---- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [10]
---- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow enter on route [true]
 function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness,
                               settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
-    settings_main_gameobject_threshold = settings_gameobject_threshold or settings_main_gameobject_threshold
-    settings_main_path_curve_tightness = settings_path_curve_tightness or settings_main_path_curve_tightness
-    settings_main_path_curve_roundness = settings_path_curve_roundness or settings_main_path_curve_roundness
+    settings_main_gameobject_threshold                = settings_gameobject_threshold or settings_main_gameobject_threshold
+    settings_main_path_curve_tightness               = settings_path_curve_tightness or settings_main_path_curve_tightness
+    settings_main_path_curve_roundness               = settings_path_curve_roundness or settings_main_path_curve_roundness
     settings_main_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
     if settings_allow_enter_on_route ~= nil then
         settings_main_allow_enter_on_route = settings_allow_enter_on_route
     end
 end
 
+----------------------------------------------------------------------
+-- Map modification
+----------------------------------------------------------------------
+
 --- Update an existing node position.
---- @param node_id (number) node id
---- @param position (vector3) node position
 function M.map_update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
@@ -180,6 +251,7 @@ function M.map_update_node_position(node_id, position)
                     ab_len2    = ab_len2,
                     inv_ab_len = inv_ab_len,
                 }
+                bump_route_version(a_id, b_id)
             end
 
             a_id, b_id = b_id, a_id
@@ -256,6 +328,7 @@ local function map_add_oneway_route(source_id, destination_id, route_info)
         end
     end
 
+    bump_route_version(source_id, destination_id)
     return routes_from[destination_id]
 end
 
@@ -300,11 +373,11 @@ local function map_remove_oneway_route(source_id, destination_id)
             end
         end
     end
+
+    bump_route_version(source_id, destination_id)
 end
 
 --- Adding a node at the given position (position.z will get ignored).
---- @param position (vector3) node position
---- @return (number) Newly added node id
 function M.map_add_node(position)
     assert(position, "You must provide a position")
 
@@ -322,9 +395,6 @@ function M.map_add_node(position)
 end
 
 --- Adding a two-way route between two nodes, you can set it as one way or two way.
---- @param source_id (number) source node id
---- @param destination_id (number) destination node id
---- @param is_one_way (boolean|nil) optional is one-way route [false]
 function M.map_add_route(source_id, destination_id, is_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
@@ -346,9 +416,6 @@ function M.map_add_route(source_id, destination_id, is_one_way)
 end
 
 --- Removing an existing route between two nodes, you can set it to remove just one way or both ways.
---- @param source_id (number) source node id
---- @param destination_id (number) destination node id
---- @param is_remove_one_way (boolean|nil) optional is remove only one-way route [false]
 function M.map_remove_route(source_id, destination_id, is_remove_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
@@ -370,7 +437,6 @@ function M.map_remove_route(source_id, destination_id, is_remove_one_way)
 end
 
 --- Removing an existing node, attached routes to this node will remove.
---- @param node_id (number) node id
 function M.map_remove_node(node_id)
     assert(node_id, "You must provide a node id")
     assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
@@ -393,32 +459,19 @@ function M.map_remove_node(node_id)
 
         if map_node_list[from_id] then map_update_node_type(from_id) end
         if map_node_list[to_id]   then map_update_node_type(to_id)   end
+
+        bump_node_version(from_id)
+        bump_node_version(to_id)
     end
 
     map_node_list[node_id] = nil
     bump_node_version(node_id)
 end
 
-local function compute_path_version(from_id, to_id, path_ids)
-    local v = 0
-    local nv = node_version
+----------------------------------------------------------------------
+-- Nearest route
+----------------------------------------------------------------------
 
-    local vf = nv[from_id] or 0
-    if vf > v then v = vf end
-
-    local vt = nv[to_id] or 0
-    if vt > v then v = vt end
-
-    for i = 1, #path_ids do
-        local id = path_ids[i]
-        local nvi = nv[id] or 0
-        if nvi > v then v = nvi end
-    end
-
-    return v
-end
-
---- Calculate the nearest position on the nearest route on the map from the given position.
 local function calculate_to_nearest_route(position)
     local min_from, min_to
     local min_x, min_y
@@ -513,7 +566,10 @@ local function calculate_to_nearest_route(position)
     }
 end
 
---- Calculate graph path inside map from a node to another node.
+----------------------------------------------------------------------
+-- Pathfinding
+----------------------------------------------------------------------
+
 local function calculate_path(start_id, finish_id)
     local previous  = {}
     local distances = {}
@@ -577,43 +633,60 @@ local function calculate_path(start_id, finish_id)
     end
 end
 
---- Retrive path results from cache or update cache.
+--- Retrieve path results from cache or update cache.
 local function fetch_path(from_id, to_id)
     if from_id == to_id then
+        local ids = { from_id }
+        local node_versions = { node_version[from_id] or 0 }
+        local route_versions = {}
         return {
-            distance = 0,
-            path     = {},
-            version  = compute_path_version(from_id, to_id, {}),
+            distance       = 0,
+            path           = ids,
+            node_versions  = node_versions,
+            route_versions = route_versions,
         }
     end
 
     local row = pathfinder_cache[from_id]
     if row then
         local cache = row[to_id]
-        if cache then
-            local current_version = compute_path_version(from_id, to_id, cache.path)
-            if cache.version == current_version then
-                return cache
-            end
+        if cache and is_path_cache_valid(cache) then
+            return cache
         end
     end
 
-    local path = calculate_path(from_id, to_id)
-    if not path or #path == 0 then return nil end
+    local path_nodes = calculate_path(from_id, to_id)
+    if not path_nodes or #path_nodes == 0 then return nil end
 
     local route = {}
-    for index = #path, 1, -1 do
-        local node = path[index]
+    for index = #path_nodes, 1, -1 do
+        local node = path_nodes[index]
         if node.distance ~= 0 then
             local cache_row = pathfinder_cache[node.id]
             if not cache_row then
                 cache_row = {}
                 pathfinder_cache[node.id] = cache_row
             end
+
+            local node_ids = copy_table(route)
+            local node_versions = {}
+            local route_versions = {}
+
+            for i = 1, #node_ids do
+                node_versions[i] = node_version[node_ids[i]] or 0
+            end
+            for i = 1, #node_ids - 1 do
+                local a = node_ids[i]
+                local b = node_ids[i + 1]
+                local rv_row = route_version[a]
+                route_versions[i] = rv_row and rv_row[b] or 0
+            end
+
             cache_row[to_id] = {
-                distance = node.distance,
-                path     = copy_table(route),
-                version  = compute_path_version(node.id, to_id, route),
+                distance       = node.distance,
+                path           = node_ids,
+                node_versions  = node_versions,
+                route_versions = route_versions,
             }
         end
         table.insert(route, 1, node.id)
@@ -622,7 +695,10 @@ local function fetch_path(from_id, to_id)
     return pathfinder_cache[from_id][to_id]
 end
 
---- Calculate path curvature.
+----------------------------------------------------------------------
+-- Path curvature
+----------------------------------------------------------------------
+
 local function process_path_curvature(before, current, after, roundness,
                                       settings_path_curve_tightness,
                                       settings_path_curve_max_distance_from_corner,
@@ -668,13 +744,18 @@ local function process_path_curvature(before, current, after, roundness,
     end
 end
 
---- Initialize moves from source position to a node with an destination node inside the created map.
+----------------------------------------------------------------------
+-- Movement initialization
+----------------------------------------------------------------------
+
 local function move_internal_initialize(source_position, move_data)
     local near_result = calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
-        move_data.path_index    = 0
+        move_data.path_index = 0
         local path = move_data.path
         for i = 1, #path do path[i] = nil end
+        move_data.path_node_ids = {}
+        move_data.path_version  = 0
         return move_data
     end
 
@@ -690,6 +771,8 @@ local function move_internal_initialize(source_position, move_data)
     end
 
     local position_list = {}
+    local node_ids_list = {}
+
     position_list[1] = source_position
     local pos_count = 1
 
@@ -715,18 +798,24 @@ local function move_internal_initialize(source_position, move_data)
         if from_distance <= to_distance then
             pos_count = pos_count + 1
             position_list[pos_count] = from_node_pos
+            node_ids_list[#node_ids_list + 1] = near_result.route_from_id
+
             local fp = from_path.path
             for i = 1, #fp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[fp[i]].position
+                node_ids_list[#node_ids_list + 1] = fp[i]
             end
         else
             pos_count = pos_count + 1
             position_list[pos_count] = to_node_pos
+            node_ids_list[#node_ids_list + 1] = near_result.route_to_id
+
             local tp = to_path.path
             for i = 1, #tp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[tp[i]].position
+                node_ids_list[#node_ids_list + 1] = tp[i]
             end
         end
     end
@@ -773,44 +862,17 @@ local function move_internal_initialize(source_position, move_data)
         end
     end
 
-    move_data.path_index = 1
-
-    -- compute version for the full path
-    local path_ids = {}
-    for i = 1, #path do
-        -- find node ids for versioning
-        for id, node in pairs(map_node_list) do
-            if node.position.x == path[i].x and node.position.y == path[i].y then
-                path_ids[#path_ids + 1] = id
-                break
-            end
-        end
-    end
-
-    move_data.path_version = compute_path_version(
-        path_ids[1],
-        path_ids[#path_ids],
-        path_ids
-    )
+    move_data.path_index    = 1
+    move_data.path_node_ids = node_ids_list
+    move_data.path_version  = compute_path_version(node_ids_list)
 
     return move_data
 end
 
---- Initialize moves from a source position to destination node list inside the created
---- map and using given threshold and initial face vector as game object initial face direction
---- and path calculate settings considering the route type, the optional value will fall back
---- to their default values.
---- @alias ROUTETYPE hash
---- @param self (table) self table
---- @param go (defold_api.go) current game object
---- @param destination_list (table) list of destinations id
---- @param route_type (ROUTETYPE|nil) optional route type [ROUTETYPE.ONETIME]
---- @param initial_face_vector (vector3|nil) optional initial game object face vector [nil]
---- @param settings_gameobject_threshold (number|nil) optional game object threshold [settings_main_gameobject_threshold]
---- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [settings_main_path_curve_tightness]
---- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [settings_main_path_curve_roundness]
---- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [settings_main_path_curve_max_distance_from_corner]
---- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow to enter on route [settings_main_allow_enter_on_route]
+----------------------------------------------------------------------
+-- Player initialization
+----------------------------------------------------------------------
+
 function M.player_initialization(self,
                                  go,
                                  destination_list,
@@ -855,6 +917,8 @@ function M.player_initialization(self,
         route_type                            = route_type,
         path_index                            = 0,
         path                                  = {},
+        path_node_ids                         = {},
+        path_version                          = 0,
         initial_face_vector                   = initial_face_vector,
         current_face_vector                   = initial_face_vector,
         initial_angle                         = initial_angle,
@@ -870,36 +934,10 @@ function M.player_initialization(self,
     self._defgraph_internal_movement_data = move_internal_initialize(go.get_position(), move_data)
 end
 
--- Recompute path only if its version is outdated
-local function compute_current_path_version(move_data)
-    local ids = {}
-    local path = move_data.path
-    for i = 1, #path do
-        for id, node in pairs(map_node_list) do
-            if node.position.x == path[i].x and node.position.y == path[i].y then
-                ids[#ids + 1] = id
-                break
-            end
-        end
-    end
+----------------------------------------------------------------------
+-- Player update
+----------------------------------------------------------------------
 
-    if #ids == 0 then
-        return -1
-    end
-
-    return compute_path_version(ids[1], ids[#ids], ids)
-end
-
---- Calculate movements from current position of the game object inside the created map
---- considering given speed, using last calculated movement data.
---- @param self (table) self table
---- @param go (defold_api.go) current game object
---- @param speed (number) player speed
---- @return (table) move result this table includes:
----      * position (vector3) game object next postion.
----      * rotation (vector3|nil) game object next rotation if rotation calculation was on.
----      * is_reached (boolean) is game object reached a destination.
----      * destination_id (number) node id of destination.
 function M.player_update(self, go, speed)
     assert(self, "You must provide self table")
     assert(go, "You must provide a game object")
@@ -907,9 +945,20 @@ function M.player_update(self, go, speed)
     local current_position = go.get_position()
     local move_data        = self._defgraph_internal_movement_data
 
-    local current_version = compute_current_path_version(move_data)
-    if current_version ~= move_data.path_version then
-        move_data = move_internal_initialize(current_position, move_data)
+    -- fine-grained path invalidation based on node/route versions
+    local function current_path_version()
+        local ids = move_data.path_node_ids or {}
+        if #ids == 0 then
+            return 0
+        end
+        return compute_path_version(ids)
+    end
+
+    if move_data.path_index ~= 0 then
+        local v = current_path_version()
+        if v ~= move_data.path_version then
+            move_data = move_internal_initialize(current_position, move_data)
+        end
     end
 
     local rotation = nil
