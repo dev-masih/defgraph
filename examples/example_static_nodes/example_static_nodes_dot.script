@@ -4,13 +4,13 @@ local defgraph = require "defgraph.defgraph"
 function init(self)
 
 	-- initializing defgraph player
-	defgraph.player_initialization(self, go, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE, vmath.vector3(0, 1, 0))
+	self.player = defgraph.create_player(go.get_position(), { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
 
 	-- defgraph player calculation loop
-	self.update_result = defgraph.player_update(self, go, 100 * dt)
+	self.update_result = self.player:update(100 * dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)
@@ -21,5 +21,5 @@ function update(self, dt)
 	end
 
 	-- debug draw defgraph player with specific color
-	defgraph.debug_draw_player(self, vmath.vector4(1, 1, 0, 1), true, true, true)
+	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), true, true, true)
 end

@@ -50,6 +50,8 @@ local sqrt  = math.sqrt
 local abs   = math.abs
 local huge  = math.huge
 local atan2 = math.atan2
+--- @class vector4
+local vector4 = vmath.vector4()
 
 --- routing types
 M.ROUTETYPE = {
@@ -870,80 +872,15 @@ local function move_internal_initialize(source_position, move_data)
 end
 
 ----------------------------------------------------------------------
--- Player initialization
-----------------------------------------------------------------------
-
-function M.player_initialization(self,
-                                 go,
-                                 destination_list,
-                                 route_type,
-                                 initial_face_vector,
-                                 settings_gameobject_threshold,
-                                 settings_path_curve_tightness,
-                                 settings_path_curve_roundness,
-                                 settings_path_curve_max_distance_from_corner,
-                                 settings_allow_enter_on_route)
-
-    assert(self, "You must provide self table")
-    assert(go, "You must provide a game object")
-    assert(destination_list, "You must provide a destination list")
-
-    route_type                        = route_type or M.ROUTETYPE.ONETIME
-    settings_gameobject_threshold     = settings_gameobject_threshold or settings_main_gameobject_threshold
-    settings_path_curve_roundness     = settings_path_curve_roundness or settings_main_path_curve_roundness
-    settings_path_curve_tightness     = settings_path_curve_tightness or settings_main_path_curve_tightness
-    settings_path_curve_max_distance_from_corner =
-        settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
-    if settings_allow_enter_on_route == nil then
-        settings_allow_enter_on_route = settings_main_allow_enter_on_route
-    end
-
-    local destination_id = 1
-    local dest_count     = #destination_list
-    if route_type == M.ROUTETYPE.SHUFFLE and dest_count > 1 then
-        destination_id = math.random(dest_count)
-    end
-
-    local initial_angle = nil
-    if initial_face_vector then
-        initial_angle = atan2(initial_face_vector.y, initial_face_vector.x)
-    end
-
-    local threshold_sq = (settings_gameobject_threshold + 1) * (settings_gameobject_threshold + 1)
-
-    local move_data = {
-        destination_list                      = destination_list,
-        destination_index                     = destination_id,
-        route_type                            = route_type,
-        path_index                            = 0,
-        path                                  = {},
-        path_node_ids                         = {},
-        path_version                          = 0,
-        initial_face_vector                   = initial_face_vector,
-        current_face_vector                   = initial_face_vector,
-        initial_angle                         = initial_angle,
-        settings_gameobject_threshold         = settings_gameobject_threshold,
-        settings_gameobject_threshold_sq      = threshold_sq,
-        settings_path_curve_tightness         = settings_path_curve_tightness,
-        settings_path_curve_roundness         = settings_path_curve_roundness,
-        settings_allow_enter_on_route         = settings_allow_enter_on_route,
-        settings_path_curve_max_distance_from_corner =
-            settings_path_curve_max_distance_from_corner,
-    }
-
-    self._defgraph_internal_movement_data = move_internal_initialize(go.get_position(), move_data)
-end
-
-----------------------------------------------------------------------
 -- Player update
 ----------------------------------------------------------------------
 
-function M.player_update(self, go, speed)
-    assert(self, "You must provide self table")
+local function player_update(self, speed)
+    assert(self, "You must provide defold move data")
     assert(go, "You must provide a game object")
 
+    local move_data = self
     local current_position = go.get_position()
-    local move_data        = self._defgraph_internal_movement_data
     local path             = move_data.path
     local path_index       = move_data.path_index
 
@@ -966,7 +903,7 @@ function M.player_update(self, go, speed)
     ----------------------------------------------------------------------
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
-        if not move_data.initial_face_vector then
+        if not move_data.initial_angle then
             return nil
         end
 
@@ -1003,12 +940,11 @@ function M.player_update(self, go, speed)
     -- 3. If no path, just rotate smoothly toward current facing
     ----------------------------------------------------------------------
     if path_index == 0 then
-        if move_data.initial_face_vector then
+        if move_data.initial_angle then
             local cf = move_data.current_face_vector
             rotation = apply_rotation_smoothing(cf.x, cf.y)
         end
 
-        self._defgraph_internal_movement_data = move_data
         return {
             position       = current_position,
             rotation       = rotation,
@@ -1041,7 +977,7 @@ function M.player_update(self, go, speed)
             local dir_y = vy * inv_len
 
             -- Rotation smoothing
-            if move_data.initial_face_vector then
+            if move_data.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
             end
 
@@ -1049,7 +985,6 @@ function M.player_update(self, go, speed)
             local new_x = current_position.x + dir_x * speed
             local new_y = current_position.y + dir_y * speed
 
-            self._defgraph_internal_movement_data = move_data
             return {
                 position       = vmath.vector3(new_x, new_y, 0),
                 rotation       = rotation,
@@ -1071,7 +1006,7 @@ function M.player_update(self, go, speed)
             local is_reached = (dx*dx + dy*dy <= threshold_sq)
 
             -- Smooth rotation at destination
-            if move_data.initial_face_vector then
+            if move_data.initial_angle then
                 local cf = move_data.current_face_vector
                 rotation = apply_rotation_smoothing(cf.x, cf.y)
             end
@@ -1103,7 +1038,6 @@ function M.player_update(self, go, speed)
                 end
             end
 
-            self._defgraph_internal_movement_data = move_data
             return {
                 position       = current_position,
                 rotation       = rotation,
@@ -1213,25 +1147,24 @@ function M.debug_draw_map_routes()
 end
 
 --- Debug draw player path + optional projection + optional direction arrows + optional snap radius.
---- @param self table
 --- @param color vector4
 --- @param is_show_projection boolean|nil
 --- @param is_show_directions boolean|nil
 --- @param is_show_snap_radius boolean|nil
-function M.debug_draw_player(self, color, is_show_projection, is_show_directions, is_show_snap_radius)
-    assert(self, "You must provide self table")
+local function debug_draw_player(self, color, is_show_projection, is_show_directions, is_show_snap_radius)
+    assert(self, "You must provide movement data")
     assert(color, "You must provide a color")
 
-    local data = self._defgraph_internal_movement_data
-    local path = data.path
-    local start_i = data.path_index
+    local movement_data = self
+    local path = movement_data.path
+    local start_i = movement_data.path_index
     local pos = go.get_position()
 
     -------------------------------------------------------------------------
     -- 1. Node snapping radius visualization
     -------------------------------------------------------------------------
     if is_show_snap_radius then
-        local r = data.settings_gameobject_threshold + 1
+        local r = movement_data.settings_gameobject_threshold + 1
         local steps = 16
         local prev = nil
 
@@ -1358,7 +1291,7 @@ function M.debug_draw_player(self, color, is_show_projection, is_show_directions
         local dy = pos.y - target.y
         local dist_sq = dx*dx + dy*dy
 
-        if dist_sq > data.settings_gameobject_threshold_sq then
+        if dist_sq > movement_data.settings_gameobject_threshold_sq then
             local result = calculate_to_nearest_route(pos)
             if result then
                 local proj = result.position_on_route
@@ -1389,6 +1322,70 @@ function M.debug_draw_player(self, color, is_show_projection, is_show_directions
             end
         end
     end
+end
+
+
+----------------------------------------------------------------------
+-- Player initialization
+----------------------------------------------------------------------
+
+function M.create_player(initial_position,
+                                 destination_list,
+                                 route_type,
+                                 initial_face_vector,
+                                 settings_gameobject_threshold,
+                                 settings_path_curve_tightness,
+                                 settings_path_curve_roundness,
+                                 settings_path_curve_max_distance_from_corner,
+                                 settings_allow_enter_on_route)
+
+    assert(initial_position, "You must provide initial position")
+    assert(destination_list, "You must provide a destination list")
+
+    route_type                        = route_type or M.ROUTETYPE.ONETIME
+    settings_gameobject_threshold     = settings_gameobject_threshold or settings_main_gameobject_threshold
+    settings_path_curve_roundness     = settings_path_curve_roundness or settings_main_path_curve_roundness
+    settings_path_curve_tightness     = settings_path_curve_tightness or settings_main_path_curve_tightness
+    settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
+    if settings_allow_enter_on_route == nil then
+        settings_allow_enter_on_route = settings_main_allow_enter_on_route
+    end
+
+    local destination_id = 1
+    local dest_count     = #destination_list
+    if route_type == M.ROUTETYPE.SHUFFLE and dest_count > 1 then
+        destination_id = math.random(dest_count)
+    end
+
+    local initial_angle = nil
+    if initial_face_vector then
+        initial_angle = atan2(initial_face_vector.y, initial_face_vector.x)
+    end
+
+    local threshold_sq = (settings_gameobject_threshold + 1) * (settings_gameobject_threshold + 1)
+
+    local move_data = {
+        destination_list                      = destination_list,
+        destination_index                     = destination_id,
+        route_type                            = route_type,
+        path_index                            = 0,
+        path                                  = {},
+        path_node_ids                         = {},
+        path_version                          = 0,
+        current_face_vector                   = initial_face_vector,
+        initial_angle                         = initial_angle,
+        settings_gameobject_threshold         = settings_gameobject_threshold,
+        settings_gameobject_threshold_sq      = threshold_sq,
+        settings_path_curve_tightness         = settings_path_curve_tightness,
+        settings_path_curve_roundness         = settings_path_curve_roundness,
+        settings_allow_enter_on_route         = settings_allow_enter_on_route,
+        settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner,
+
+        update = player_update,
+        debug_draw = debug_draw_player
+    }
+
+    return move_internal_initialize(initial_position, move_data)
 end
 
 return M

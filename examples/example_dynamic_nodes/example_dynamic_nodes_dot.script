@@ -2,15 +2,13 @@
 local defgraph = require "defgraph.defgraph"
 
 function init(self)
-
 	-- initializing defgraph player with face direction
-	defgraph.player_initialization(self, go, { 36, 1 }, defgraph.ROUTETYPE.CYCLE, vmath.vector3(0, 1, 0))
+	self.player = defgraph.create_player(go.get_position(), { 36, 1 }, defgraph.ROUTETYPE.CYCLE, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
-
 	-- defgraph player calculation loop
-	self.update_result = defgraph.player_update(self, go, 100 * dt)
+	self.update_result = self.player:update(100 * dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)
@@ -18,7 +16,7 @@ function update(self, dt)
 	-- update go rotation based of returned result
 	go.set_rotation(self.update_result.rotation)
 
-	defgraph.debug_draw_player(self, vmath.vector4(1, 1, 0, 1), true, true, true)
+	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), true, true, true)
 
 	-- you can check if go reached to the destination
 	if self.update_result.is_reached then
