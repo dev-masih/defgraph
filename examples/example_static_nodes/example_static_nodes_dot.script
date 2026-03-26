@@ -4,7 +4,7 @@ local defgraph = require "defgraph.defgraph"
 function init(self)
 
 	-- initializing defgraph player
-	defgraph.player_initialization(self, go, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE)
+	defgraph.player_initialization(self, go, { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
@@ -21,5 +21,5 @@ function update(self, dt)
 	end
 
 	-- debug draw defgraph player with specific color
-	defgraph.debug_draw_player(self, vmath.vector4(1, 1, 0, 1))
+	defgraph.debug_draw_player(self, vmath.vector4(1, 1, 0, 1), true, true, true)
 end

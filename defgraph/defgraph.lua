@@ -1043,77 +1043,147 @@ function M.debug_draw_map_routes()
     end
 end
 
---- Debug draw player path + optional intersection markers + optional projection visualizer.
+--- Debug draw player path + optional projection + optional direction arrows + optional snap radius.
 --- @param self table
 --- @param color vector4
---- @param is_show_intersection boolean|nil
 --- @param is_show_projection boolean|nil
-function M.debug_draw_player(self, color, is_show_intersection, is_show_projection)
+--- @param is_show_directions boolean|nil
+--- @param is_show_snap_radius boolean|nil
+function M.debug_draw_player(self, color, is_show_projection, is_show_directions, is_show_snap_radius)
     assert(self, "You must provide self table")
     assert(color, "You must provide a color")
 
     local data = self._defgraph_internal_movement_data
     local path = data.path
     local start_i = data.path_index
+    local pos = go.get_position()
 
+    -------------------------------------------------------------------------
+    -- 1. Node snapping radius visualization
+    -------------------------------------------------------------------------
+    if is_show_snap_radius then
+        local r = data.settings_gameobject_threshold + 1
+        local steps = 16
+        local prev = nil
+
+        for i = 0, steps do
+            local angle = (i / steps) * 6.28318530718
+            local p = pos + vmath.vector3(math.cos(angle) * r, math.sin(angle) * r, 0)
+
+            if prev then
+                msg.post("@render:", "draw_line", {
+                    start_point = prev,
+                    end_point   = p,
+                    color       = vmath.vector4(1, 0.5, 0, 1)
+                })
+            end
+            prev = p
+        end
+    end
+
+    -------------------------------------------------------------------------
+    -- 2. If player is NOT on path → show projection only
+    -------------------------------------------------------------------------
     if start_i == 0 then
-        -- Player is NOT on path → projection visualizer can be shown
         if is_show_projection then
-            local pos = go.get_position()
             local result = calculate_to_nearest_route(pos)
             if result then
                 local proj = result.position_on_route
                 local from_pos = map_node_list[result.route_from_id].position
                 local to_pos   = map_node_list[result.route_to_id].position
 
-                -- Draw route segment
+                -- route segment
                 msg.post("@render:", "draw_line", {
                     start_point = from_pos,
                     end_point   = to_pos,
-                    color       = color
+                    color       = vmath.vector4(1, 1, 0, 1)
                 })
 
-                -- Draw projection line
+                -- projection line
                 msg.post("@render:", "draw_line", {
                     start_point = pos,
                     end_point   = proj,
-                    color       = color
+                    color       = vmath.vector4(1, 1, 0, 1)
                 })
 
-                -- Projection marker
-                local s = debug_draw_scale + 2
-                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3( s,  s, 0), end_point = proj + vmath.vector3(-s, -s, 0), color = color })
-                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3(-s,  s, 0), end_point = proj + vmath.vector3( s, -s, 0), color = color })
+                -- projection marker (small circle)
+                local r = 4
+                local steps = 10
+                local prev = nil
+
+                for i = 0, steps do
+                    local angle = (i / steps) * 6.28318530718
+                    local p = proj + vmath.vector3(math.cos(angle) * r, math.sin(angle) * r, 0)
+
+                    if prev then
+                        msg.post("@render:", "draw_line", {
+                            start_point = prev,
+                            end_point   = p,
+                            color       = vmath.vector4(1, 1, 0, 1)
+                        })
+                    end
+                    prev = p
+                end
             end
         end
         return
     end
 
-    -- Player IS on path → draw path normally
-    local s = debug_draw_scale + 2
-    local up = vmath.vector3( s,  s, 0)
-    local dn = vmath.vector3(-s, -s, 0)
+    -------------------------------------------------------------------------
+    -- 3. Player IS on path → draw path normally
+    -------------------------------------------------------------------------
+    local arrow_spacing = 40       -- pixels between arrows
+    local dist_acc = 0             -- accumulated distance
 
     for i = start_i, #path - 1 do
         local p1 = path[i]
         local p2 = path[i + 1]
 
+        -- main path line
         msg.post("@render:", "draw_line", {
             start_point = p1,
             end_point   = p2,
             color       = color
         })
 
-        if is_show_intersection then
-            msg.post("@render:", "draw_line", { start_point = p1 + up, end_point = p1 + dn, color = color })
-            msg.post("@render:", "draw_line", { start_point = p1 + vmath.vector3(-s, s, 0), end_point = p1 + vmath.vector3(s, -s, 0), color = color })
+        ---------------------------------------------------------------------
+        -- 3A. Direction arrows (distance-based, clean)
+        ---------------------------------------------------------------------
+        if is_show_directions then
+            local seg = p2 - p1
+            local seg_len = vmath.length(seg)
+
+            if seg_len > 0.001 then
+                local dir = seg / seg_len
+                local perp = vmath.vector3(-dir.y, dir.x, 0)
+                local arrow_size = 6
+
+                local remaining = seg_len
+
+                while remaining + dist_acc >= arrow_spacing do
+                    local t = (arrow_spacing - dist_acc) / seg_len
+                    local arrow_pos = p1 + seg * t
+
+                    local tip  = arrow_pos + dir * arrow_size
+                    local left = arrow_pos - dir * arrow_size + perp * arrow_size * 0.6
+                    local right= arrow_pos - dir * arrow_size - perp * arrow_size * 0.6
+
+                    msg.post("@render:", "draw_line", { start_point = left,  end_point = tip, color = color })
+                    msg.post("@render:", "draw_line", { start_point = right, end_point = tip, color = color })
+
+                    remaining = remaining - (arrow_spacing - dist_acc)
+                    dist_acc = 0
+                end
+
+                dist_acc = dist_acc + remaining
+            end
         end
     end
 
-    -- Optional projection visualizer WHILE on path:
-    -- Only show if player is NOT close to the current path segment
+    -------------------------------------------------------------------------
+    -- 4. Optional projection WHILE on path (only if player drifts off)
+    -------------------------------------------------------------------------
     if is_show_projection then
-        local pos = go.get_position()
         local target = path[start_i]
         local dx = pos.x - target.x
         local dy = pos.y - target.y
@@ -1126,24 +1196,31 @@ function M.debug_draw_player(self, color, is_show_intersection, is_show_projecti
                 local from_pos = map_node_list[result.route_from_id].position
                 local to_pos   = map_node_list[result.route_to_id].position
 
-                msg.post("@render:", "draw_line", {
-                    start_point = from_pos,
-                    end_point   = to_pos,
-                    color       = vmath.vector4(1, 1, 0, 1)
-                })
+                msg.post("@render:", "draw_line", { start_point = from_pos, end_point = to_pos, color = vmath.vector4(1,1,0,1) })
+                msg.post("@render:", "draw_line", { start_point = pos, end_point = proj, color = vmath.vector4(1,1,0,1) })
 
-                msg.post("@render:", "draw_line", {
-                    start_point = pos,
-                    end_point   = proj,
-                    color       = vmath.vector4(1, 1, 0, 1)
-                })
+                -- projection marker (small circle)
+                local r = 4
+                local steps = 10
+                local prev = nil
 
-                local s2 = debug_draw_scale + 2
-                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3( s2,  s2, 0), end_point = proj + vmath.vector3(-s2, -s2, 0), color = vmath.vector4(1,1,0,1) })
-                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3(-s2,  s2, 0), end_point = proj + vmath.vector3( s2, -s2, 0), color = vmath.vector4(1,1,0,1) })
+                for i = 0, steps do
+                    local angle = (i / steps) * 6.28318530718
+                    local p = proj + vmath.vector3(math.cos(angle) * r, math.sin(angle) * r, 0)
+
+                    if prev then
+                        msg.post("@render:", "draw_line", {
+                            start_point = prev,
+                            end_point   = p,
+                            color       = vmath.vector4(1, 1, 0, 1)
+                        })
+                    end
+                    prev = p
+                end
             end
         end
     end
 end
+
 
 return M

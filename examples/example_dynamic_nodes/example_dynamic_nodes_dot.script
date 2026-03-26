@@ -18,6 +18,8 @@ function update(self, dt)
 	-- update go rotation based of returned result
 	go.set_rotation(self.update_result.rotation)
 
+	defgraph.debug_draw_player(self, vmath.vector4(1, 1, 0, 1), true, true, true)
+
 	-- you can check if go reached to the destination
 	if self.update_result.is_reached then
 		print("I'm at destination id: " .. self.update_result.destination_id)
