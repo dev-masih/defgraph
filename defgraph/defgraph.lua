@@ -503,6 +503,10 @@ local function calculate_path(start_id, finish_id)
             return nil
         end
 
+        if current_dist == huge then
+            return nil
+        end
+
         if not visited[current] then
             visited[current] = true
 
