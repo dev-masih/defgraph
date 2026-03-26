@@ -6,7 +6,7 @@ function init(self)
 	self.map = defgraph.create_or_get_map("MyMap")
 
 	-- initializing defgraph player with face direction
-	self.player = self.map:create_player(go.get_position(), { 36, 1 }, defgraph.ROUTETYPE.CYCLE, vmath.vector3(0, 1, 0))
+	self.player = self.map:create_player_with_key("MyPlayer", go.get_position(), { 36, 1 }, defgraph.ROUTETYPE.CYCLE, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)

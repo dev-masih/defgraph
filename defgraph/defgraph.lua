@@ -168,44 +168,55 @@ function Map.new()
         map_node_list    = {}, -- [node_id] = { position, type, neighbor_id[] }
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len }
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] }
+        players = {}, -- player registry
 
         -- versioning
         node_version   = {},   -- [node_id] = int
         route_version  = {},   -- [from_id][to_id] = int
 
-        -- node id iterator
-        map_node_id_iter = 0,
+        map_node_id_iter = 0,  -- node id iterator
+        player_id_iter = 0,    -- player id iterator
 
-        -- per-map settings (copied from global defaults)
+        -- per-map settings
         settings_gameobject_threshold                = settings_main_gameobject_threshold,
         settings_path_curve_tightness               = settings_main_path_curve_tightness,
         settings_path_curve_roundness               = settings_main_path_curve_roundness,
         settings_path_curve_max_distance_from_corner = settings_main_path_curve_max_distance_from_corner,
-        settings_allow_enter_on_route               = settings_main_allow_enter_on_route,
-
-        -- holds players
-        players = {}
+        settings_allow_enter_on_route               = settings_main_allow_enter_on_route
     }
     return setmetatable(self, Map)
 end
 
+function Map:get_player(key)
+    return self.players[key]
+end
+
+function Map:remove_player(key)
+    local player = self.players[key]
+    if not player then return end
+
+    if player.destroy then
+        player:destroy()
+    end
+
+    self.players[key] = nil
+end
+
 function Map:destroy()
-    -- Clear all internal structures
+    -- Destroy players
+    for key, player in pairs(self.players) do
+        if player.destroy then
+            player:destroy()
+        end
+        self.players[key] = nil
+    end
+
+    -- Clear map internals
     self.map_node_list = {}
     self.map_route_list = {}
     self.pathfinder_cache = {}
     self.node_version = {}
     self.route_version = {}
-
-    -- Optional: track players and destroy them
-    if self.players then
-        for _, player in ipairs(self.players) do
-            if player.destroy then
-                player:destroy()
-            end
-        end
-        self.players = {}
-    end
 
     self._destroyed = true
 end
@@ -1392,16 +1403,15 @@ function Player:destroy()
     self.map = nil
     self.path = {}
     self.path_node_ids = {}
-    self._prev_angle = nil
     self.current_face_vector = nil
+    self._prev_angle = nil
 end
-
 
 ----------------------------------------------------------------------
 -- Player creation (Map method)
 ----------------------------------------------------------------------
 
-function Map:create_player(initial_position,
+function Map:create_player_with_key(key, initial_position,
                            destination_list,
                            route_type,
                            initial_face_vector,
@@ -1410,7 +1420,8 @@ function Map:create_player(initial_position,
                            settings_path_curve_roundness,
                            settings_path_curve_max_distance_from_corner,
                            settings_allow_enter_on_route)
-
+    assert(key, "Player key required")
+    assert(not self.players[key], "Player with this key already exists")
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
@@ -1459,9 +1470,10 @@ function Map:create_player(initial_position,
 
     local player = setmetatable(move_data, Player)
 
-    -- Track players for cleanup
-    self.players = self.players or {}
-    table.insert(self.players, player)
+    -- Assign unique id per map
+    self.player_id_iter = self.player_id_iter + 1
+    player.id = self.player_id_iter
+    self.players[key] = player
 
     return self:move_internal_initialize(initial_position, move_data)
 end

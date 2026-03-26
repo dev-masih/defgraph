@@ -6,7 +6,7 @@ function init(self)
 	self.map = defgraph.create_or_get_map("MyMap")
 
 	-- initializing defgraph player
-	self.player = self.map:create_player(go.get_position(), { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE, vmath.vector3(0, 1, 0))
+	self.player = self.map:create_player_with_key("MyPlayer", go.get_position(), { 6, 18, 14, 2, 4, 10 }, defgraph.ROUTETYPE.SHUFFLE, vmath.vector3(0, 1, 0))
 end
 
 function update(self, dt)
