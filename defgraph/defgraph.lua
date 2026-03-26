@@ -789,9 +789,6 @@ function M.player_initialization(self,
     local destination_id = 1
     local dest_count     = #destination_list
     if route_type == M.ROUTETYPE.SHUFFLE and dest_count > 1 then
-        math.random(dest_count)
-        math.random(dest_count)
-        math.random(dest_count)
         destination_id = math.random(dest_count)
     end
 
