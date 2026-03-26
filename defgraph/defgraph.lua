@@ -16,11 +16,18 @@ local map_node_list = {}
 local map_route_list = {}
 
 --- store cached data from pathfinder algorithm.
---- structure: pathfinder_cache[from_id][to_id] = { change_number, distance, path[]:number }
+--- structure: pathfinder_cache[from_id][to_id] = { distance, path[]:number }
 local pathfinder_cache = {}
 
 local map_node_id_iterator = 0
-local map_change_iterator = 0
+
+-- per-node versioning for fine-grained cache invalidation
+local node_version = {}
+
+local function bump_node_version(node_id)
+    node_version[node_id] = (node_version[node_id] or 0) + 1
+end
+
 
 local NODETYPE = {
     SINGLE = hash("defgraph_nodetype_single"),
@@ -179,7 +186,7 @@ function M.map_update_node_position(node_id, position)
         end
     end
 
-    map_change_iterator = map_change_iterator + 1
+    bump_node_version(node_id)
 end
 
 --- Add one way route from one node to another.
@@ -310,7 +317,7 @@ function M.map_add_node(position)
         neighbor_id = {},
     }
 
-    map_change_iterator = map_change_iterator + 1
+    bump_node_version(node_id)
     return node_id
 end
 
@@ -333,7 +340,9 @@ function M.map_add_route(source_id, destination_id, is_one_way)
 
     map_update_node_type(source_id)
     map_update_node_type(destination_id)
-    map_change_iterator = map_change_iterator + 1
+
+    bump_node_version(source_id)
+    bump_node_version(destination_id)
 end
 
 --- Removing an existing route between two nodes, you can set it to remove just one way or both ways.
@@ -355,7 +364,9 @@ function M.map_remove_route(source_id, destination_id, is_remove_one_way)
 
     map_update_node_type(source_id)
     map_update_node_type(destination_id)
-    map_change_iterator = map_change_iterator + 1
+
+    bump_node_version(source_id)
+    bump_node_version(destination_id)
 end
 
 --- Removing an existing node, attached routes to this node will remove.
@@ -385,7 +396,26 @@ function M.map_remove_node(node_id)
     end
 
     map_node_list[node_id] = nil
-    map_change_iterator = map_change_iterator + 1
+    bump_node_version(node_id)
+end
+
+local function compute_path_version(from_id, to_id, path_ids)
+    local v = 0
+    local nv = node_version
+
+    local vf = nv[from_id] or 0
+    if vf > v then v = vf end
+
+    local vt = nv[to_id] or 0
+    if vt > v then v = vt end
+
+    for i = 1, #path_ids do
+        local id = path_ids[i]
+        local nvi = nv[id] or 0
+        if nvi > v then v = nvi end
+    end
+
+    return v
 end
 
 --- Calculate the nearest position on the nearest route on the map from the given position.
@@ -548,20 +578,23 @@ local function calculate_path(start_id, finish_id)
 end
 
 --- Retrive path results from cache or update cache.
-local function fetch_path(change_number, from_id, to_id)
+local function fetch_path(from_id, to_id)
     if from_id == to_id then
         return {
-            change_number = change_number,
-            distance      = 0,
-            path          = {},
+            distance = 0,
+            path     = {},
+            version  = compute_path_version(from_id, to_id, {}),
         }
     end
 
     local row = pathfinder_cache[from_id]
     if row then
         local cache = row[to_id]
-        if cache and cache.change_number == change_number then
-            return cache
+        if cache then
+            local current_version = compute_path_version(from_id, to_id, cache.path)
+            if cache.version == current_version then
+                return cache
+            end
         end
     end
 
@@ -578,9 +611,9 @@ local function fetch_path(change_number, from_id, to_id)
                 pathfinder_cache[node.id] = cache_row
             end
             cache_row[to_id] = {
-                change_number = change_number,
-                distance      = node.distance,
-                path          = copy_table(route),
+                distance = node.distance,
+                path     = copy_table(route),
+                version  = compute_path_version(node.id, to_id, route),
             }
         end
         table.insert(route, 1, node.id)
@@ -639,7 +672,6 @@ end
 local function move_internal_initialize(source_position, move_data)
     local near_result = calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
-        move_data.change_number = map_change_iterator
         move_data.path_index    = 0
         local path = move_data.path
         for i = 1, #path do path[i] = nil end
@@ -649,11 +681,11 @@ local function move_internal_initialize(source_position, move_data)
     local from_path, to_path
 
     if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
-        from_path = fetch_path(map_change_iterator, near_result.route_from_id,
+        from_path = fetch_path(near_result.route_from_id,
                                move_data.destination_list[move_data.destination_index])
     end
     if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
-        to_path = fetch_path(map_change_iterator, near_result.route_to_id,
+        to_path = fetch_path(near_result.route_to_id,
                              move_data.destination_list[move_data.destination_index])
     end
 
@@ -741,8 +773,26 @@ local function move_internal_initialize(source_position, move_data)
         end
     end
 
-    move_data.change_number = map_change_iterator
-    move_data.path_index    = 1
+    move_data.path_index = 1
+
+    -- compute version for the full path
+    local path_ids = {}
+    for i = 1, #path do
+        -- find node ids for versioning
+        for id, node in pairs(map_node_list) do
+            if node.position.x == path[i].x and node.position.y == path[i].y then
+                path_ids[#path_ids + 1] = id
+                break
+            end
+        end
+    end
+
+    move_data.path_version = compute_path_version(
+        path_ids[1],
+        path_ids[#path_ids],
+        path_ids
+    )
+
     return move_data
 end
 
@@ -800,7 +850,6 @@ function M.player_initialization(self,
     local threshold_sq = (settings_gameobject_threshold + 1) * (settings_gameobject_threshold + 1)
 
     local move_data = {
-        change_number                         = map_change_iterator,
         destination_list                      = destination_list,
         destination_index                     = destination_id,
         route_type                            = route_type,
@@ -821,6 +870,26 @@ function M.player_initialization(self,
     self._defgraph_internal_movement_data = move_internal_initialize(go.get_position(), move_data)
 end
 
+-- Recompute path only if its version is outdated
+local function compute_current_path_version(move_data)
+    local ids = {}
+    local path = move_data.path
+    for i = 1, #path do
+        for id, node in pairs(map_node_list) do
+            if node.position.x == path[i].x and node.position.y == path[i].y then
+                ids[#ids + 1] = id
+                break
+            end
+        end
+    end
+
+    if #ids == 0 then
+        return -1
+    end
+
+    return compute_path_version(ids[1], ids[#ids], ids)
+end
+
 --- Calculate movements from current position of the game object inside the created map
 --- considering given speed, using last calculated movement data.
 --- @param self (table) self table
@@ -838,7 +907,8 @@ function M.player_update(self, go, speed)
     local current_position = go.get_position()
     local move_data        = self._defgraph_internal_movement_data
 
-    if move_data.change_number ~= map_change_iterator then
+    local current_version = compute_current_path_version(move_data)
+    if current_version ~= move_data.path_version then
         move_data = move_internal_initialize(current_position, move_data)
     end
 
