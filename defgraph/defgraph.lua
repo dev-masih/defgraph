@@ -1,4 +1,4 @@
--- DefGraph
+-- DefGraph v5.0
 -- This module contains functions to create a world map as a shape of a graph and the ability
 -- to manipulate it at any time, easily see debug drawing of this graph and move and rotate
 -- game objects inside of this graph with utilizing auto pathfinder.
@@ -7,25 +7,25 @@ local M = {}
 
 math.randomseed(os.time() - os.clock() * 1000)
 
---- Store node data and it's neighbors.
---- Structure: map_node_list[node_id] = { position, type, neighbor_id[]:number }
+--- store node data and it's neighbors.
+--- structure: map_node_list[node_id] = { position, type, neighbor_id[]:number }
 local map_node_list = {}
 
---- Store routes data and line equation info.
---- Structure: map_route_list[from_id][to_id] = { a, b, c, distance, ab_len2, inv_ab_len }
+--- store routes data and line equation and calculation info.
+--- structure: map_route_list[from_id][to_id] = { a, b, c, distance, ab_len2, inv_ab_len }
 local map_route_list = {}
 
---- Store cached data from pathfinder algorithm.
---- Structure: pathfinder_cache[from_id][to_id] = { change_number, distance, path[]:number }
+--- store cached data from pathfinder algorithm.
+--- structure: pathfinder_cache[from_id][to_id] = { change_number, distance, path[]:number }
 local pathfinder_cache = {}
 
 local map_node_id_iterator = 0
 local map_change_iterator = 0
 
 local NODETYPE = {}
-NODETYPE.SINGLE = hash("nodetype_single")
-NODETYPE.DEADEND = hash("nodetype_deadend")
-NODETYPE.INTERSECTION = hash("nodetype_intersection")
+NODETYPE.SINGLE = hash("defgraph_nodetype_single")
+NODETYPE.DEADEND = hash("defgraph_nodetype_deadend")
+NODETYPE.INTERSECTION = hash("defgraph_nodetype_intersection")
 
 -- color vectors and scale of debug drawing
 local debug_node_color = vmath.vector4(1, 0, 1, 1)
@@ -48,28 +48,11 @@ local atan2 = math.atan2
 
 --- routing types
 M.ROUTETYPE = {}
-M.ROUTETYPE.ONETIME = hash("routetype_onetime")
-M.ROUTETYPE.SHUFFLE = hash("routetype_shuffle")
-M.ROUTETYPE.CYCLE = hash("routetype_cycle")
+M.ROUTETYPE.ONETIME = hash("defgraph_routetype_onetime")
+M.ROUTETYPE.SHUFFLE = hash("defgraph_routetype_shuffle")
+M.ROUTETYPE.CYCLE = hash("defgraph_routetype_cycle")
 
---- Set the main path and move calculation properties, nil inputs will fall back to default values.
---- @param settings_gameobject_threshold (number|nil) optional game object threshold [1]
---- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [4]
---- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [3]
---- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [10]
---- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow enter on route [true]
-function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness,
-                              settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
-    settings_main_gameobject_threshold = settings_gameobject_threshold or settings_main_gameobject_threshold
-    settings_main_path_curve_tightness = settings_path_curve_tightness or settings_main_path_curve_tightness
-    settings_main_path_curve_roundness = settings_path_curve_roundness or settings_main_path_curve_roundness
-    settings_main_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
-    if settings_allow_enter_on_route ~= nil then
-        settings_main_allow_enter_on_route = settings_allow_enter_on_route
-    end
-end
-
---- Calculate distance between two vector3.
+--- utility local functions
 local function distance(source, destination)
     local dx = source.x - destination.x
     local dy = source.y - destination.y
@@ -118,6 +101,37 @@ local function heap_pop(heap)
     end
 
     return root.id, root.dist
+end
+
+local function copy_table(table)
+    local new_table = {}
+    for key, value in pairs(table) do
+        new_table[key] = value
+    end
+    return new_table
+end
+
+local function table_size(table)
+    local count = 0
+    for _ in pairs(table) do count = count + 1 end
+    return count
+end
+
+--- Set the main path and move calculation properties, nil inputs will fall back to default values.
+--- @param settings_gameobject_threshold (number|nil) optional game object threshold [1]
+--- @param settings_path_curve_tightness (number|nil) optional path curvature tightness [4]
+--- @param settings_path_curve_roundness (number|nil) optional path curvature roundness [3]
+--- @param settings_path_curve_max_distance_from_corner (number|nil) optional path curvature maximum distance from corner [10]
+--- @param settings_allow_enter_on_route (boolean|nil) optional is game object allow enter on route [true]
+function M.map_set_properties(settings_gameobject_threshold, settings_path_curve_tightness, settings_path_curve_roundness,
+                              settings_path_curve_max_distance_from_corner, settings_allow_enter_on_route)
+    settings_main_gameobject_threshold = settings_gameobject_threshold or settings_main_gameobject_threshold
+    settings_main_path_curve_tightness = settings_path_curve_tightness or settings_main_path_curve_tightness
+    settings_main_path_curve_roundness = settings_path_curve_roundness or settings_main_path_curve_roundness
+    settings_main_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner or settings_main_path_curve_max_distance_from_corner
+    if settings_allow_enter_on_route ~= nil then
+        settings_main_allow_enter_on_route = settings_allow_enter_on_route
+    end
 end
 
 --- Update an existing node position.
@@ -169,25 +183,6 @@ function M.map_update_node_position(node_id, position)
     end
 
     map_change_iterator = map_change_iterator + 1
-end
-
---- Set the debug drawing properties, nil inputs will fall back to default values.
---- @param node_color (vector4|nil) optional nodes color [vector4(1, 0, 1, 1)]
---- @param two_way_route_color (vector4|nil) optional two-way routes color [vector4(0, 1, 0, 1)]
---- @param one_way_route_color (vector4|nil) optional one-way routes color [vector4(0, 1, 1, 1)]
---- @param draw_scale (number|nil) optional drawing scale [5]
-function M.debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
-    debug_node_color = node_color or debug_node_color
-    debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
-    debug_one_way_route_color = one_way_route_color or debug_one_way_route_color
-    debug_draw_scale = draw_scale or debug_draw_scale
-end
-
---- Count size of non-sequential table.
-local function table_size(table)
-    local count = 0
-    for _ in pairs(table) do count = count + 1 end
-    return count
 end
 
 --- Add one way route from one node to another.
@@ -373,85 +368,6 @@ function M.map_remove_node(node_id)
     map_change_iterator = map_change_iterator + 1
 end
 
---- Debug draw all map nodes and choose to show node ids or not.
---- @param is_show_ids (boolean|nil) optional is show nodes id [false]
-function M.debug_draw_map_nodes(is_show_ids)
-    for node_id, node in pairs(map_node_list) do
-        if is_show_ids then
-            msg.post("@render:", "draw_text", { text = node_id, position = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0) } )
-        end
-
-        if node.type == NODETYPE.SINGLE then
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
-        end
-
-        if node.type == NODETYPE.DEADEND then
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-        end
-
-        if node.type == NODETYPE.INTERSECTION then
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-        end
-
-    end
-end
-
---- Debug draw all map routes.
-function M.debug_draw_map_routes()
-    for from_id, routes in pairs(map_route_list) do
-        for to_id, route in pairs(routes) do
-            if map_route_list[to_id] and map_route_list[to_id][from_id] then
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
-            else
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
-
-                local arrow_postion = 4 / 5 * map_node_list[to_id].position + map_node_list[from_id].position / 5
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(3, 3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(-3, -3, 0), color = debug_one_way_route_color } )
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(3, 3, 0), color = debug_one_way_route_color } )
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, -3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
-            end
-        end
-    end
-end
-
---- Debug draw player specific path with given color.
---- @param self (table) self table
---- @param color (vector4) path color
---- @param is_show_intersection (boolean|nil) optional is show intersection [false]
-function M.debug_draw_player(self, color, is_show_intersection)
-
-    assert(self, "You must provide self table")
-    assert(color, "You must provide a color")
-
-    if self._defgraph_internal_movement_data.path_index ~= 0 then
-        for index = self._defgraph_internal_movement_data.path_index, #self._defgraph_internal_movement_data.path do
-            if index ~= #self._defgraph_internal_movement_data.path then
-                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index], end_point = self._defgraph_internal_movement_data.path[index + 1], color = color } )
-            end
-            if is_show_intersection then
-                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
-                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
-            end
-        end
-    end
-end
-
---- Shallow copy a table.
-local function shallow_copy(table)
-    local new_table = {}
-    for key, value in pairs(table) do
-        new_table[key] = value
-    end
-    return new_table
-end
-
 --- Calculate the nearest position on the nearest route on the map from the given position.
 local function calculate_to_nearest_route(position)
     local min_from, min_to
@@ -631,7 +547,7 @@ local function fetch_path(change_number, from_id, to_id)
             pathfinder_cache[path[index].id][to_id] = {
                 change_number = change_number,
                 distance = path[index].distance,
-                path = shallow_copy(route)
+                path = copy_table(route)
             }
         end
         table.insert(route, 1, path[index].id)
@@ -951,6 +867,90 @@ function M.player_update(self, go, speed)
         is_reached = false,
         destination_id = move_data.destination_list[move_data.destination_index]
     }
+end
+
+-- Debug Methods
+
+--- set the debug drawing properties, nil inputs will fall back to default values.
+--- @param node_color (vector4|nil) optional nodes color [vector4(1, 0, 1, 1)]
+--- @param two_way_route_color (vector4|nil) optional two-way routes color [vector4(0, 1, 0, 1)]
+--- @param one_way_route_color (vector4|nil) optional one-way routes color [vector4(0, 1, 1, 1)]
+--- @param draw_scale (number|nil) optional drawing scale [5]
+function M.debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
+    debug_node_color = node_color or debug_node_color
+    debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
+    debug_one_way_route_color = one_way_route_color or debug_one_way_route_color
+    debug_draw_scale = draw_scale or debug_draw_scale
+end
+
+--- Debug draw all map nodes and choose to show node ids or not.
+--- @param is_show_ids (boolean|nil) optional is show nodes id [false]
+function M.debug_draw_map_nodes(is_show_ids)
+    for node_id, node in pairs(map_node_list) do
+        if is_show_ids then
+            msg.post("@render:", "draw_text", { text = node_id, position = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0) } )
+        end
+
+        if node.type == NODETYPE.SINGLE then
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
+        end
+
+        if node.type == NODETYPE.DEADEND then
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+        end
+
+        if node.type == NODETYPE.INTERSECTION then
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), color = debug_node_color } )
+            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+        end
+
+    end
+end
+
+--- Debug draw all map routes.
+function M.debug_draw_map_routes()
+    for from_id, routes in pairs(map_route_list) do
+        for to_id, route in pairs(routes) do
+            if map_route_list[to_id] and map_route_list[to_id][from_id] then
+                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
+            else
+                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
+
+                local arrow_postion = 4 / 5 * map_node_list[to_id].position + map_node_list[from_id].position / 5
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(3, 3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(-3, -3, 0), color = debug_one_way_route_color } )
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(3, 3, 0), color = debug_one_way_route_color } )
+                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, -3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
+            end
+        end
+    end
+end
+
+--- Debug draw player specific path with given color.
+--- @param self (table) self table
+--- @param color (vector4) path color
+--- @param is_show_intersection (boolean|nil) optional is show intersection [false]
+function M.debug_draw_player(self, color, is_show_intersection)
+
+    assert(self, "You must provide self table")
+    assert(color, "You must provide a color")
+
+    if self._defgraph_internal_movement_data.path_index ~= 0 then
+        for index = self._defgraph_internal_movement_data.path_index, #self._defgraph_internal_movement_data.path do
+            if index ~= #self._defgraph_internal_movement_data.path then
+                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index], end_point = self._defgraph_internal_movement_data.path[index + 1], color = color } )
+            end
+            if is_show_intersection then
+                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
+                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+            end
+        end
+    end
 end
 
 return M
