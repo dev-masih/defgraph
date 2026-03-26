@@ -962,68 +962,185 @@ end
 --- Debug draw all map nodes and choose to show node ids or not.
 --- @param is_show_ids (boolean|nil) optional is show nodes id [false]
 function M.debug_draw_map_nodes(is_show_ids)
+    local s = debug_draw_scale
+
+    local up     = vmath.vector3(0,  s, 0)
+    local down   = vmath.vector3(0, -s, 0)
+    local left   = vmath.vector3(-s, 0, 0)
+    local right  = vmath.vector3( s, 0, 0)
+    local diag   = vmath.vector3( s,  s, 0)
+    local ndiag  = vmath.vector3(-s, -s, 0)
+
     for node_id, node in pairs(map_node_list) do
+        local p = node.position
+
         if is_show_ids then
-            msg.post("@render:", "draw_text", { text = node_id, position = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0) } )
+            msg.post("@render:", "draw_text", {
+                text = tostring(node_id),
+                position = p + diag
+            })
         end
 
         if node.type == NODETYPE.SINGLE then
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(0, debug_draw_scale, 0), color = debug_node_color } )
-        end
+            -- triangle
+            msg.post("@render:", "draw_line", { start_point = p + up,    end_point = p + left,  color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + left,  end_point = p + right, color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + right, end_point = p + up,    color = debug_node_color })
 
-        if node.type == NODETYPE.DEADEND then
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-        end
+        elseif node.type == NODETYPE.DEADEND then
+            -- X
+            msg.post("@render:", "draw_line", { start_point = p + diag,  end_point = p + ndiag, color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + vmath.vector3(-s, s, 0), end_point = p + vmath.vector3(s, -s, 0), color = debug_node_color })
 
-        if node.type == NODETYPE.INTERSECTION then
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, debug_draw_scale, 0), color = debug_node_color } )
-            msg.post("@render:", "draw_line", { start_point = node.position + vmath.vector3(-debug_draw_scale, -debug_draw_scale, 0), end_point = node.position + vmath.vector3(debug_draw_scale, -debug_draw_scale, 0), color = debug_node_color } )
+        elseif node.type == NODETYPE.INTERSECTION then
+            -- square
+            msg.post("@render:", "draw_line", { start_point = p + left + up,    end_point = p + right + up,    color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + right + up,   end_point = p + right + down,  color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + right + down, end_point = p + left + down,   color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + left + down,  end_point = p + left + up,     color = debug_node_color })
         end
-
     end
 end
 
 --- Debug draw all map routes.
 function M.debug_draw_map_routes()
-    for from_id, routes in pairs(map_route_list) do
-        for to_id, route in pairs(routes) do
-            if map_route_list[to_id] and map_route_list[to_id][from_id] then
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_two_way_route_color } )
-            else
-                msg.post("@render:", "draw_line", { start_point = map_node_list[from_id].position, end_point = map_node_list[to_id].position, color = debug_one_way_route_color } )
+    local arrow = 6
+    local a1 = vmath.vector3( arrow,  arrow, 0)
+    local a2 = vmath.vector3( arrow, -arrow, 0)
+    local a3 = vmath.vector3(-arrow,  arrow, 0)
+    local a4 = vmath.vector3(-arrow, -arrow, 0)
 
-                local arrow_postion = 4 / 5 * map_node_list[to_id].position + map_node_list[from_id].position / 5
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(3, 3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(-3, -3, 0), color = debug_one_way_route_color } )
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, 3, 0), end_point = arrow_postion + vmath.vector3(3, 3, 0), color = debug_one_way_route_color } )
-                msg.post("@render:", "draw_line", { start_point = arrow_postion + vmath.vector3(-3, -3, 0), end_point = arrow_postion + vmath.vector3(3, -3, 0), color = debug_one_way_route_color } )
+    for from_id, routes in pairs(map_route_list) do
+        local p1 = map_node_list[from_id].position
+
+        for to_id in pairs(routes) do
+            local p2 = map_node_list[to_id].position
+
+            if map_route_list[to_id] and map_route_list[to_id][from_id] then
+                -- two-way
+                msg.post("@render:", "draw_line", {
+                    start_point = p1,
+                    end_point   = p2,
+                    color       = debug_two_way_route_color
+                })
+            else
+                -- one-way
+                msg.post("@render:", "draw_line", {
+                    start_point = p1,
+                    end_point   = p2,
+                    color       = debug_one_way_route_color
+                })
+
+                -- arrowhead at 80% of the route
+                local arrow_pos = p1 * 0.2 + p2 * 0.8
+
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a1, end_point = arrow_pos + a2, color = debug_one_way_route_color })
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a3, end_point = arrow_pos + a4, color = debug_one_way_route_color })
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a3, end_point = arrow_pos + a1, color = debug_one_way_route_color })
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a4, end_point = arrow_pos + a2, color = debug_one_way_route_color })
             end
         end
     end
 end
 
---- Debug draw player specific path with given color.
---- @param self (table) self table
---- @param color (vector4) path color
---- @param is_show_intersection (boolean|nil) optional is show intersection [false]
-function M.debug_draw_player(self, color, is_show_intersection)
-
+--- Debug draw player path + optional intersection markers + optional projection visualizer.
+--- @param self table
+--- @param color vector4
+--- @param is_show_intersection boolean|nil
+--- @param is_show_projection boolean|nil
+function M.debug_draw_player(self, color, is_show_intersection, is_show_projection)
     assert(self, "You must provide self table")
     assert(color, "You must provide a color")
 
-    if self._defgraph_internal_movement_data.path_index ~= 0 then
-        for index = self._defgraph_internal_movement_data.path_index, #self._defgraph_internal_movement_data.path do
-            if index ~= #self._defgraph_internal_movement_data.path then
-                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index], end_point = self._defgraph_internal_movement_data.path[index + 1], color = color } )
+    local data = self._defgraph_internal_movement_data
+    local path = data.path
+    local start_i = data.path_index
+
+    if start_i == 0 then
+        -- Player is NOT on path → projection visualizer can be shown
+        if is_show_projection then
+            local pos = go.get_position()
+            local result = calculate_to_nearest_route(pos)
+            if result then
+                local proj = result.position_on_route
+                local from_pos = map_node_list[result.route_from_id].position
+                local to_pos   = map_node_list[result.route_to_id].position
+
+                -- Draw route segment
+                msg.post("@render:", "draw_line", {
+                    start_point = from_pos,
+                    end_point   = to_pos,
+                    color       = color
+                })
+
+                -- Draw projection line
+                msg.post("@render:", "draw_line", {
+                    start_point = pos,
+                    end_point   = proj,
+                    color       = color
+                })
+
+                -- Projection marker
+                local s = debug_draw_scale + 2
+                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3( s,  s, 0), end_point = proj + vmath.vector3(-s, -s, 0), color = color })
+                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3(-s,  s, 0), end_point = proj + vmath.vector3( s, -s, 0), color = color })
             end
-            if is_show_intersection then
-                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, -debug_draw_scale - 2, 0), color = color } )
-                msg.post("@render:", "draw_line", { start_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(-debug_draw_scale - 2, debug_draw_scale + 2, 0), end_point = self._defgraph_internal_movement_data.path[index] + vmath.vector3(debug_draw_scale + 2, -debug_draw_scale - 2, 0), color = color } )
+        end
+        return
+    end
+
+    -- Player IS on path → draw path normally
+    local s = debug_draw_scale + 2
+    local up = vmath.vector3( s,  s, 0)
+    local dn = vmath.vector3(-s, -s, 0)
+
+    for i = start_i, #path - 1 do
+        local p1 = path[i]
+        local p2 = path[i + 1]
+
+        msg.post("@render:", "draw_line", {
+            start_point = p1,
+            end_point   = p2,
+            color       = color
+        })
+
+        if is_show_intersection then
+            msg.post("@render:", "draw_line", { start_point = p1 + up, end_point = p1 + dn, color = color })
+            msg.post("@render:", "draw_line", { start_point = p1 + vmath.vector3(-s, s, 0), end_point = p1 + vmath.vector3(s, -s, 0), color = color })
+        end
+    end
+
+    -- Optional projection visualizer WHILE on path:
+    -- Only show if player is NOT close to the current path segment
+    if is_show_projection then
+        local pos = go.get_position()
+        local target = path[start_i]
+        local dx = pos.x - target.x
+        local dy = pos.y - target.y
+        local dist_sq = dx*dx + dy*dy
+
+        if dist_sq > data.settings_gameobject_threshold_sq then
+            local result = calculate_to_nearest_route(pos)
+            if result then
+                local proj = result.position_on_route
+                local from_pos = map_node_list[result.route_from_id].position
+                local to_pos   = map_node_list[result.route_to_id].position
+
+                msg.post("@render:", "draw_line", {
+                    start_point = from_pos,
+                    end_point   = to_pos,
+                    color       = vmath.vector4(1, 1, 0, 1)
+                })
+
+                msg.post("@render:", "draw_line", {
+                    start_point = pos,
+                    end_point   = proj,
+                    color       = vmath.vector4(1, 1, 0, 1)
+                })
+
+                local s2 = debug_draw_scale + 2
+                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3( s2,  s2, 0), end_point = proj + vmath.vector3(-s2, -s2, 0), color = vmath.vector4(1,1,0,1) })
+                msg.post("@render:", "draw_line", { start_point = proj + vmath.vector3(-s2,  s2, 0), end_point = proj + vmath.vector3( s2, -s2, 0), color = vmath.vector4(1,1,0,1) })
             end
         end
     end
