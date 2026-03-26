@@ -879,21 +879,20 @@ local function player_update(self, speed)
     assert(self, "You must provide defold move data")
     assert(go, "You must provide a game object")
 
-    local move_data = self
     local current_position = go.get_position()
-    local path             = move_data.path
-    local path_index       = move_data.path_index
+    local path             = self.path
+    local path_index       = self.path_index
 
     ----------------------------------------------------------------------
     -- 1. Fine-grained path invalidation (fast)
     ----------------------------------------------------------------------
     if path_index ~= 0 then
-        local ids = move_data.path_node_ids
+        local ids = self.path_node_ids
         if ids and #ids > 0 then
-            if compute_path_version(ids) ~= move_data.path_version then
-                move_data = move_internal_initialize(current_position, move_data)
-                path = move_data.path
-                path_index = move_data.path_index
+            if compute_path_version(ids) ~= self.path_version then
+                self = move_internal_initialize(current_position, self)
+                path = self.path
+                path_index = self.path_index
             end
         end
     end
@@ -903,12 +902,12 @@ local function player_update(self, speed)
     ----------------------------------------------------------------------
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
-        if not move_data.initial_angle then
+        if not self.initial_angle then
             return nil
         end
 
         -- Smooth direction vector (cheap)
-        local cf = move_data.current_face_vector
+        local cf = self.current_face_vector
         local rx = cf.x + (dir_x - cf.x) * (0.2 * speed)
         local ry = cf.y + (dir_y - cf.y) * (0.2 * speed)
 
@@ -916,7 +915,7 @@ local function player_update(self, speed)
         local angle = math.atan2(ry, rx)
 
         -- Dead-zone + smoothing
-        local prev_angle = move_data._prev_angle or angle
+        local prev_angle = self._prev_angle or angle
         local diff = angle - prev_angle
 
         -- Normalize diff to [-pi, pi]
@@ -929,19 +928,19 @@ local function player_update(self, speed)
             angle = prev_angle + diff * 0.25
         end
 
-        move_data._prev_angle = angle
-        move_data.current_face_vector.x = rx
-        move_data.current_face_vector.y = ry
+        self._prev_angle = angle
+        self.current_face_vector.x = rx
+        self.current_face_vector.y = ry
 
-        return vmath.quat_rotation_z(angle - move_data.initial_angle)
+        return vmath.quat_rotation_z(angle - self.initial_angle)
     end
 
     ----------------------------------------------------------------------
     -- 3. If no path, just rotate smoothly toward current facing
     ----------------------------------------------------------------------
     if path_index == 0 then
-        if move_data.initial_angle then
-            local cf = move_data.current_face_vector
+        if self.initial_angle then
+            local cf = self.current_face_vector
             rotation = apply_rotation_smoothing(cf.x, cf.y)
         end
 
@@ -949,14 +948,14 @@ local function player_update(self, speed)
             position       = current_position,
             rotation       = rotation,
             is_reached     = false,
-            destination_id = move_data.destination_list[move_data.destination_index],
+            destination_id = self.destination_list[self.destination_index],
         }
     end
 
     ----------------------------------------------------------------------
     -- 4. Movement loop (optimized)
     ----------------------------------------------------------------------
-    local threshold_sq = move_data.settings_gameobject_threshold_sq
+    local threshold_sq = self.settings_gameobject_threshold_sq
     local last_index   = #path
 
     for i = path_index, last_index do
@@ -969,7 +968,7 @@ local function player_update(self, speed)
 
         -- If not close enough, this is our movement target
         if dist_sq > threshold_sq then
-            move_data.path_index = i
+            self.path_index = i
 
             -- Fast normalize
             local inv_len = 1 / math.sqrt(dist_sq)
@@ -977,7 +976,7 @@ local function player_update(self, speed)
             local dir_y = vy * inv_len
 
             -- Rotation smoothing
-            if move_data.initial_angle then
+            if self.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
             end
 
@@ -989,7 +988,7 @@ local function player_update(self, speed)
                 position       = vmath.vector3(new_x, new_y, 0),
                 rotation       = rotation,
                 is_reached     = false,
-                destination_id = move_data.destination_list[move_data.destination_index],
+                destination_id = self.destination_list[self.destination_index],
             }
         end
 
@@ -998,7 +997,7 @@ local function player_update(self, speed)
         ------------------------------------------------------------------
         if i == last_index then
             -- Final destination reached?
-            local dest_id  = move_data.destination_list[move_data.destination_index]
+            local dest_id  = self.destination_list[self.destination_index]
             local dest_pos = map_node_list[dest_id].position
 
             local dx = current_position.x - dest_pos.x
@@ -1006,35 +1005,35 @@ local function player_update(self, speed)
             local is_reached = (dx*dx + dy*dy <= threshold_sq)
 
             -- Smooth rotation at destination
-            if move_data.initial_angle then
-                local cf = move_data.current_face_vector
+            if self.initial_angle then
+                local cf = self.current_face_vector
                 rotation = apply_rotation_smoothing(cf.x, cf.y)
             end
 
             -- Handle route type transitions
             if is_reached then
-                local count = #move_data.destination_list
-                if move_data.route_type == M.ROUTETYPE.ONETIME then
-                    if move_data.destination_index < count then
-                        move_data.destination_index = move_data.destination_index + 1
-                        move_data = move_internal_initialize(current_position, move_data)
+                local count = #self.destination_list
+                if self.route_type == M.ROUTETYPE.ONETIME then
+                    if self.destination_index < count then
+                        self.destination_index = self.destination_index + 1
+                        self = move_internal_initialize(current_position, self)
                     end
-                elseif move_data.route_type == M.ROUTETYPE.SHUFFLE then
+                elseif self.route_type == M.ROUTETYPE.SHUFFLE then
                     if count > 1 then
-                        local new_id = move_data.destination_index
+                        local new_id = self.destination_index
                         repeat
                             new_id = math.random(count)
-                        until new_id ~= move_data.destination_index
-                        move_data.destination_index = new_id
-                        move_data = move_internal_initialize(current_position, move_data)
+                        until new_id ~= self.destination_index
+                        self.destination_index = new_id
+                        self = move_internal_initialize(current_position, self)
                     end
-                elseif move_data.route_type == M.ROUTETYPE.CYCLE then
-                    if move_data.destination_index < count then
-                        move_data.destination_index = move_data.destination_index + 1
+                elseif self.route_type == M.ROUTETYPE.CYCLE then
+                    if self.destination_index < count then
+                        self.destination_index = self.destination_index + 1
                     else
-                        move_data.destination_index = 1
+                        self.destination_index = 1
                     end
-                    move_data = move_internal_initialize(current_position, move_data)
+                    self = move_internal_initialize(current_position, self)
                 end
             end
 
@@ -1155,16 +1154,15 @@ local function debug_draw_player(self, color, is_show_projection, is_show_direct
     assert(self, "You must provide movement data")
     assert(color, "You must provide a color")
 
-    local movement_data = self
-    local path = movement_data.path
-    local start_i = movement_data.path_index
+    local path = self.path
+    local start_i = self.path_index
     local pos = go.get_position()
 
     -------------------------------------------------------------------------
     -- 1. Node snapping radius visualization
     -------------------------------------------------------------------------
     if is_show_snap_radius then
-        local r = movement_data.settings_gameobject_threshold + 1
+        local r = self.settings_gameobject_threshold + 1
         local steps = 16
         local prev = nil
 
@@ -1291,7 +1289,7 @@ local function debug_draw_player(self, color, is_show_projection, is_show_direct
         local dy = pos.y - target.y
         local dist_sq = dx*dx + dy*dy
 
-        if dist_sq > movement_data.settings_gameobject_threshold_sq then
+        if dist_sq > self.settings_gameobject_threshold_sq then
             local result = calculate_to_nearest_route(pos)
             if result then
                 local proj = result.position_on_route
