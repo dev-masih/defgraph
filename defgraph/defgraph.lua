@@ -1208,7 +1208,6 @@ end
 ----------------------------------------------------------------------
 -- Movement initialization
 ----------------------------------------------------------------------
-
 function Map:move_internal_initialize(source_position, move_data)
     local near_result = self:calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
@@ -1220,9 +1219,9 @@ function Map:move_internal_initialize(source_position, move_data)
         return move_data
     end
 
-    local from_path, to_path
     local map_route_list = self.map_route_list
 
+    local from_path, to_path
     if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
         from_path = self:fetch_path(near_result.route_from_id,
                                     move_data.destination_list[move_data.destination_index])
@@ -1232,19 +1231,24 @@ function Map:move_internal_initialize(source_position, move_data)
                                   move_data.destination_list[move_data.destination_index])
     end
 
+    -- Build position list and corresponding node id list (1:1 for node positions)
     local position_list = {}
     local node_ids_list = {}
 
+    -- Start with the source position (projection / actual)
     position_list[1] = source_position
     local pos_count = 1
 
+    -- If far from route and allowed, add projection point on route
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
+        -- projection point is not a map node, so do NOT add a node id for it
     end
 
     local map_node_list = self.map_node_list
 
+    -- If we have either path, choose the shorter (via from_path or to_path)
     if from_path or to_path then
         local from_distance = huge
         local to_distance   = huge
@@ -1259,7 +1263,8 @@ function Map:move_internal_initialize(source_position, move_data)
             to_distance = to_path.distance + distance(source_position, to_node_pos)
         end
 
-        if from_distance <= to_distance then
+        if from_distance <= to_distance and from_path then
+            -- Enter via the 'from' node and append its node id
             pos_count = pos_count + 1
             position_list[pos_count] = from_node_pos
             node_ids_list[#node_ids_list + 1] = near_result.route_from_id
@@ -1270,7 +1275,8 @@ function Map:move_internal_initialize(source_position, move_data)
                 position_list[pos_count] = map_node_list[fp[i]].position
                 node_ids_list[#node_ids_list + 1] = fp[i]
             end
-        else
+        elseif to_path then
+            -- Enter via the 'to' node and append its node id
             pos_count = pos_count + 1
             position_list[pos_count] = to_node_pos
             node_ids_list[#node_ids_list + 1] = near_result.route_to_id
@@ -1284,9 +1290,11 @@ function Map:move_internal_initialize(source_position, move_data)
         end
     end
 
+    -- Clear existing path
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
+    -- Build curved path if requested and there are enough points
     if move_data.config.path_curve_roundness ~= 0 and pos_count > 2 then
         path[1] = position_list[1]
         local path_count = 1
@@ -1321,11 +1329,13 @@ function Map:move_internal_initialize(source_position, move_data)
 
         path[#path + 1] = position_list[pos_count]
     else
+        -- No curvature: copy positions directly
         for i = 1, pos_count do
             path[i] = position_list[i]
         end
     end
 
+    -- Finalize move_data
     move_data.path_index    = 1
     move_data.path_node_ids = node_ids_list
     move_data.path_version  = self:compute_path_version(node_ids_list)
