@@ -1449,9 +1449,9 @@ function Map:player_update(self_player, speed)
         local future_py = py + dir_y * speed * lookahead
 
         ------------------------------------------------------------------
-        -- Build candidate list (fast)
+        -- Build candidate list (NO GRID)
         ------------------------------------------------------------------
-        local candidates = map._cached_collision_candidates or {}
+        local candidates = {}
         local count = 0
 
         if cfg.collision_groups then
@@ -1478,7 +1478,7 @@ function Map:player_update(self_player, speed)
         local ly =  dir_x
 
         ------------------------------------------------------------------
-        -- Main loop (hot path)
+        -- Main loop
         ------------------------------------------------------------------
         for i = 1, count do
             local other = candidates[i]
@@ -1499,14 +1499,14 @@ function Map:player_update(self_player, speed)
                 end
 
                 ----------------------------------------------------------
-                -- Current distance (no sqrt)
+                -- Current distance
                 ----------------------------------------------------------
                 local dx = px - ox
                 local dy = py - oy
                 local dist_sq = dx*dx + dy*dy
 
                 ----------------------------------------------------------
-                -- Future distance (no sqrt)
+                -- Future distance
                 ----------------------------------------------------------
                 local fdx = future_px - ofx
                 local fdy = future_py - ofy
@@ -1571,7 +1571,7 @@ function Map:player_update(self_player, speed)
                 end
 
                 ----------------------------------------------------------
-                -- 3. Queueing (same direction)
+                -- 3. Queueing
                 ----------------------------------------------------------
                 local odx2 = other._last_dir_x
                 if odx2 then
@@ -1608,7 +1608,7 @@ function Map:player_update(self_player, speed)
         end
 
         ------------------------------------------------------------------
-        -- 4. Density-based slowdown (no sqrt)
+        -- 4. Density-based slowdown
         ------------------------------------------------------------------
         local density_radius = radius * preset.density_radius_factor
         local density_radius_sq = density_radius * density_radius
@@ -1676,7 +1676,7 @@ function Map:player_update(self_player, speed)
         local raw_y = dir_y * base_weight + avoid_y
 
         ------------------------------------------------------------------
-        -- Normalize (1 sqrt per frame)
+        -- Normalize
         ------------------------------------------------------------------
         local len = raw_x*raw_x + raw_y*raw_y
         if len > 0 then
