@@ -288,7 +288,7 @@ function PlayerConfig:validate()
     assert(self.collision_groups == nil or type(self.collision_groups) == "table",
         "PlayerConfig: collision_groups must be nil or a list of group names")
 
-    if self.collision_groups then
+    if self.collision_groups ~= nil then
         for i, group in ipairs(self.collision_groups) do
             assert(type(group) == "string",
                 "PlayerConfig: collision_groups must contain strings")
@@ -999,6 +999,14 @@ function Map:calculate_to_nearest_route(position)
                     visited[from_id] = row
                 end
                 row[to_id] = true
+
+                -- also mark reverse to avoid recomputing the same undirected segment
+                local rev = visited[to_id]
+                if not rev then
+                    rev = {}
+                    visited[to_id] = rev
+                end
+                rev[from_id] = true
             end
         end
     end
@@ -1108,30 +1116,56 @@ function Map:fetch_path(from_id, to_id)
     end
 
     local path_nodes = self:calculate_path(from_id, to_id)
-    if not path_nodes or #path_nodes == 0 then return nil end
+    if not path_nodes or #path_nodes == 0 then
+        return nil
+    end
 
+    -- Build route from start to finish once
     local route = {}
-    for index = #path_nodes, 1, -1 do
+    local route_count = #path_nodes
+    for i = 1, route_count do
+        route[i] = path_nodes[i].id
+    end
+
+    -- Ensure row exists for from_id
+    row = pathfinder_cache[from_id]
+    if not row then
+        row = {}
+        pathfinder_cache[from_id] = row
+    end
+
+    -- For each node with non-zero distance, cache subpath to 'to_id'
+    for index = route_count, 1, -1 do
         local node = path_nodes[index]
         if node.distance ~= 0 then
-            local cache_row = pathfinder_cache[node.id]
+            local nid = node.id
+
+            local cache_row = pathfinder_cache[nid]
             if not cache_row then
                 cache_row = {}
-                pathfinder_cache[node.id] = cache_row
+                pathfinder_cache[nid] = cache_row
             end
 
-            local node_ids = copy_table(route)
+            -- Copy subpath [index .. route_count] into a fresh array
+            local sub_len = route_count - index + 1
+            local node_ids = {}
+            for j = 1, sub_len do
+                node_ids[j] = route[index + j - 1]
+            end
+
             local node_versions = {}
             local route_versions = {}
 
-            for i = 1, #node_ids do
-                node_versions[i] = self.node_version[node_ids[i]] or 0
+            for j = 1, sub_len do
+                local id = node_ids[j]
+                node_versions[j] = self.node_version[id] or 0
             end
-            for i = 1, #node_ids - 1 do
-                local a = node_ids[i]
-                local b = node_ids[i + 1]
+
+            for j = 1, sub_len - 1 do
+                local a = node_ids[j]
+                local b = node_ids[j + 1]
                 local rv_row = self.route_version[a]
-                route_versions[i] = rv_row and rv_row[b] or 0
+                route_versions[j] = rv_row and rv_row[b] or 0
             end
 
             cache_row[to_id] = {
@@ -1141,7 +1175,6 @@ function Map:fetch_path(from_id, to_id)
                 route_versions = route_versions,
             }
         end
-        table.insert(route, 1, node.id)
     end
 
     return pathfinder_cache[from_id][to_id]
@@ -1399,7 +1432,7 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 4. Collision avoidance helper
+    -- 4. Collision avoidance helper (optimized, same behavior)
     ----------------------------------------------------------------------
     local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
         local cfg = self_player.config
@@ -1420,14 +1453,8 @@ function Map:player_update(self_player, speed)
             return dir_x, dir_y, speed
         end
 
-        ------------------------------------------------------------------
-        -- Load preset
-        ------------------------------------------------------------------
         local preset = COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
 
-        ------------------------------------------------------------------
-        -- Precompute values
-        ------------------------------------------------------------------
         local px = self_player.current_position.x
         local py = self_player.current_position.y
 
@@ -1441,24 +1468,27 @@ function Map:player_update(self_player, speed)
         local strongest_predictive = 0
         local strongest_queueing   = 0
 
-        ------------------------------------------------------------------
-        -- Dynamic lookahead
-        ------------------------------------------------------------------
-        local lookahead =
-            preset.lookahead_min +
-            speed * preset.lookahead_speed_factor
-
-        if lookahead > preset.lookahead_max then lookahead = preset.lookahead_max end
-        if lookahead < preset.lookahead_min then lookahead = preset.lookahead_min end
+        -- dynamic lookahead
+        local lookahead = preset.lookahead_min + speed * preset.lookahead_speed_factor
+        if lookahead > preset.lookahead_max then
+            lookahead = preset.lookahead_max
+        elseif lookahead < preset.lookahead_min then
+            lookahead = preset.lookahead_min
+        end
 
         local future_px = px + dir_x * speed * lookahead
         local future_py = py + dir_y * speed * lookahead
 
-        ------------------------------------------------------------------
-        -- Build candidate list (NO GRID)
-        ------------------------------------------------------------------
-        local candidates = {}
+        -- reuse per-player candidates table
+        local candidates = self_player._scratch_candidates or {}
+        self_player._scratch_candidates = candidates
         local count = 0
+
+        -- clear previous contents
+        local c_len = #candidates
+        for i = 1, c_len do
+            candidates[i] = nil
+        end
 
         if cfg.collision_groups then
             for _, group in ipairs(cfg.collision_groups) do
@@ -1477,50 +1507,40 @@ function Map:player_update(self_player, speed)
             end
         end
 
-        ------------------------------------------------------------------
-        -- Precompute path perpendicular
-        ------------------------------------------------------------------
+        -- path perpendicular
         local lx = -dir_y
         local ly =  dir_x
 
-        ------------------------------------------------------------------
-        -- Main loop
-        ------------------------------------------------------------------
+        -- main loop
         for i = 1, count do
             local other = candidates[i]
             if other ~= self_player then
                 local ox = other.current_position.x
                 local oy = other.current_position.y
 
-                ----------------------------------------------------------
-                -- Predict other
-                ----------------------------------------------------------
+                -- predict other
                 local ofx = ox
                 local ofy = oy
 
                 local odx = other._last_dir_x
                 if odx then
-                    ofx = ox + odx * other._last_speed * lookahead
-                    ofy = oy + other._last_dir_y * other._last_speed * lookahead
+                    local ospeed = other._last_speed
+                    local ody = other._last_dir_y
+                    ofx = ox + odx * ospeed * lookahead
+                    ofy = oy + ody * ospeed * lookahead
                 end
 
-                ----------------------------------------------------------
-                -- Current distance
-                ----------------------------------------------------------
+                -- current distance
                 local dx = px - ox
                 local dy = py - oy
                 local dist_sq = dx*dx + dy*dy
 
-                ----------------------------------------------------------
-                -- Future distance
-                ----------------------------------------------------------
+                -- future distance
                 local fdx = future_px - ofx
                 local fdy = future_py - ofy
                 local fdist_sq = fdx*fdx + fdy*fdy
 
-                ----------------------------------------------------------
                 -- 1. Reactive avoidance
-                ----------------------------------------------------------
                 if dist_sq < radius_sq and dist_sq > 0 then
                     local dist = math.sqrt(dist_sq)
                     local overlap = (radius - dist) * (1 / radius)
@@ -1529,27 +1549,29 @@ function Map:player_update(self_player, speed)
                         strongest_reactive = overlap
                     end
 
-                    local rx = dx / dist
-                    local ry = dy / dist
+                    local inv_dist = 1 / dist
+                    local rx = dx * inv_dist
+                    local ry = dy * inv_dist
                     local lateral = rx * lx + ry * ly
                     if lateral == 0 then
                         lateral = (self_player.id % 2 == 0) and 1 or -1
                     end
 
                     local force = overlap * (radius * preset.reactive_scale)
-                    avoid_x = avoid_x + lx * lateral * force
-                    avoid_y = avoid_y + ly * lateral * force
+                    local lat_force = lateral * force
+                    avoid_x = avoid_x + lx * lat_force
+                    avoid_y = avoid_y + ly * lat_force
 
                     local dot = dx * dir_x + dy * dir_y
                     if dot < 0 then
                         local factor = 1 - overlap * preset.reactive_slow
-                        if factor < slow_factor then slow_factor = factor end
+                        if factor < slow_factor then
+                            slow_factor = factor
+                        end
                     end
                 end
 
-                ----------------------------------------------------------
                 -- 2. Predictive avoidance
-                ----------------------------------------------------------
                 if fdist_sq < radius_sq and fdist_sq > 0 then
                     local fdist = math.sqrt(fdist_sq)
                     local foverlap = (radius - fdist) * (1 / radius)
@@ -1558,30 +1580,33 @@ function Map:player_update(self_player, speed)
                         strongest_predictive = foverlap
                     end
 
-                    local rx = fdx / fdist
-                    local ry = fdy / fdist
+                    local inv_fdist = 1 / fdist
+                    local rx = fdx * inv_fdist
+                    local ry = fdy * inv_fdist
                     local lateral = rx * lx + ry * ly
                     if lateral == 0 then
                         lateral = (self_player.id % 2 == 0) and 1 or -1
                     end
 
                     local force = foverlap * (radius * preset.predictive_scale)
-                    avoid_x = avoid_x + lx * lateral * force
-                    avoid_y = avoid_y + ly * lateral * force
+                    local lat_force = lateral * force
+                    avoid_x = avoid_x + lx * lat_force
+                    avoid_y = avoid_y + ly * lat_force
 
                     local dot = fdx * dir_x + fdy * dir_y
                     if dot < 0 then
                         local factor = 1 - foverlap * preset.predictive_slow
-                        if factor < slow_factor then slow_factor = factor end
+                        if factor < slow_factor then
+                            slow_factor = factor
+                        end
                     end
                 end
 
-                ----------------------------------------------------------
                 -- 3. Queueing
-                ----------------------------------------------------------
                 local odx2 = other._last_dir_x
                 if odx2 then
-                    local align = dir_x * odx2 + dir_y * other._last_dir_y
+                    local ody2 = other._last_dir_y
+                    local align = dir_x * odx2 + dir_y * ody2
                     if align > 0.7 then
                         local dx2 = ox - px
                         local dy2 = oy - py
@@ -1599,23 +1624,25 @@ function Map:player_update(self_player, speed)
                             end
 
                             local factor = 1 - overlap2 * preset.queue_slow
-                            if factor < slow_factor then slow_factor = factor end
+                            if factor < slow_factor then
+                                slow_factor = factor
+                            end
 
-                            avoid_x = avoid_x - dir_x * overlap2 * (radius * 0.2)
-                            avoid_y = avoid_y - dir_y * overlap2 * (radius * 0.2)
+                            local back_force = overlap2 * (radius * 0.2)
+                            avoid_x = avoid_x - dir_x * back_force
+                            avoid_y = avoid_y - dir_y * back_force
 
                             local side = (self_player.id % 2 == 0) and 1 or -1
-                            avoid_x = avoid_x + (-dir_y) * side * overlap2 * 0.1
-                            avoid_y = avoid_y + ( dir_x) * side * overlap2 * 0.1
+                            local side_force = overlap2 * 0.1
+                            avoid_x = avoid_x + (-dir_y) * side * side_force
+                            avoid_y = avoid_y + ( dir_x) * side * side_force
                         end
                     end
                 end
             end
         end
 
-        ------------------------------------------------------------------
         -- 4. Density-based slowdown
-        ------------------------------------------------------------------
         local density_radius = radius * preset.density_radius_factor
         local density_radius_sq = density_radius * density_radius
 
@@ -1643,15 +1670,14 @@ function Map:player_update(self_player, speed)
         if neighbor_count > 0 then
             density = density_sum / neighbor_count
             local density_slow = 1 - density * preset.density_slow_factor
-            if density_slow < slow_factor then slow_factor = density_slow end
+            if density_slow < slow_factor then
+                slow_factor = density_slow
+            end
         end
 
-        -- ⭐ NEW: store density for debug visualization
         self_player._debug_density = density
 
-        ------------------------------------------------------------------
-        -- No avoidance
-        ------------------------------------------------------------------
+        -- no avoidance
         if strongest_reactive == 0 and strongest_predictive == 0 and strongest_queueing == 0 then
             self_player._debug_avoid_x = 0
             self_player._debug_avoid_y = 0
@@ -1669,21 +1695,21 @@ function Map:player_update(self_player, speed)
             return dir_x, dir_y, speed
         end
 
-        ------------------------------------------------------------------
-        -- Combine forces
-        ------------------------------------------------------------------
+        -- combine forces
         local predictive_weight = strongest_predictive * 0.6
-        if predictive_weight > 1 then predictive_weight = 1 end
+        if predictive_weight > 1 then
+            predictive_weight = 1
+        end
 
         local base_weight = 1 - predictive_weight
-        if base_weight < 0 then base_weight = 0 end
+        if base_weight < 0 then
+            base_weight = 0
+        end
 
         local raw_x = dir_x * base_weight + avoid_x
         local raw_y = dir_y * base_weight + avoid_y
 
-        ------------------------------------------------------------------
-        -- Normalize
-        ------------------------------------------------------------------
+        -- normalize
         local len = raw_x*raw_x + raw_y*raw_y
         if len > 0 then
             local inv = 1 / math.sqrt(len)
@@ -1693,9 +1719,7 @@ function Map:player_update(self_player, speed)
             raw_x, raw_y = 0, 0
         end
 
-        ------------------------------------------------------------------
-        -- Path recentering
-        ------------------------------------------------------------------
+        -- path recentering
         local alignment = raw_x * dir_x + raw_y * dir_y
         if alignment < 0.6 then
             local correction = (0.6 - alignment) * preset.path_recentering
@@ -1704,15 +1728,13 @@ function Map:player_update(self_player, speed)
 
             local len2 = raw_x*raw_x + raw_y*raw_y
             if len2 > 0 then
-                local inv = 1 / math.sqrt(len2)
-                raw_x = raw_x * inv
-                raw_y = raw_y * inv
+                local inv2 = 1 / math.sqrt(len2)
+                raw_x = raw_x * inv2
+                raw_y = raw_y * inv2
             end
         end
 
-        ------------------------------------------------------------------
-        -- Direction smoothing
-        ------------------------------------------------------------------
+        -- direction smoothing
         local ds = preset.dir_smoothing
 
         local sdx = self_player._smooth_dir_x or raw_x
@@ -1723,23 +1745,19 @@ function Map:player_update(self_player, speed)
 
         local slen = sdx*sdx + sdy*sdy
         if slen > 0 then
-            local inv = 1 / math.sqrt(slen)
-            sdx = sdx * inv
-            sdy = sdy * inv
+            local invs = 1 / math.sqrt(slen)
+            sdx = sdx * invs
+            sdy = sdy * invs
         end
 
-        ------------------------------------------------------------------
-        -- Speed smoothing
-        ------------------------------------------------------------------
+        -- speed smoothing
         local target_speed = speed * slow_factor
         local ss = preset.speed_smoothing
 
         local smooth_speed = self_player._smooth_speed or target_speed
         smooth_speed = smooth_speed + (target_speed - smooth_speed) * ss
 
-        ------------------------------------------------------------------
-        -- Store debug + predictive memory
-        ------------------------------------------------------------------
+        -- store debug + predictive memory
         self_player._debug_avoid_x = avoid_x
         self_player._debug_avoid_y = avoid_y
         self_player._debug_final_x = sdx
@@ -1759,8 +1777,8 @@ function Map:player_update(self_player, speed)
     ----------------------------------------------------------------------
     -- 5. Movement loop
     ----------------------------------------------------------------------
-    local threshold_sq = (self_player.config.gameobject_threshold + 1)
-    threshold_sq = threshold_sq * threshold_sq
+    local threshold = self_player.config.gameobject_threshold + 1
+    local threshold_sq = threshold * threshold
 
     local last_index = #path
     local map_node_list = self.map_node_list
@@ -1779,7 +1797,6 @@ function Map:player_update(self_player, speed)
             local dir_x = vx * inv_len
             local dir_y = vy * inv_len
 
-            -- collision avoidance
             dir_x, dir_y, speed = compute_collision_avoidance(self, self_player, dir_x, dir_y, speed)
 
             if self_player.initial_angle then
@@ -1818,12 +1835,14 @@ function Map:player_update(self_player, speed)
 
             if is_reached then
                 local count = #self_player.destination_list
-                if self_player.route_type == M.ROUTETYPE.ONETIME then
+                local rt = self_player.route_type
+
+                if rt == M.ROUTETYPE.ONETIME then
                     if self_player.destination_index < count then
                         self_player.destination_index = self_player.destination_index + 1
                         self_player = self:move_internal_initialize(self_player.current_position, self_player)
                     end
-                elseif self_player.route_type == M.ROUTETYPE.SHUFFLE then
+                elseif rt == M.ROUTETYPE.SHUFFLE then
                     if count > 1 then
                         local new_id = self_player.destination_index
                         repeat
@@ -1832,7 +1851,7 @@ function Map:player_update(self_player, speed)
                         self_player.destination_index = new_id
                         self_player = self:move_internal_initialize(self_player.current_position, self_player)
                     end
-                elseif self_player.route_type == M.ROUTETYPE.CYCLE then
+                elseif rt == M.ROUTETYPE.CYCLE then
                     if self_player.destination_index < count then
                         self_player.destination_index = self_player.destination_index + 1
                     else
@@ -2278,7 +2297,14 @@ function Player:destroy()
     self.current_face_vector = nil
     self._prev_angle = nil
     self.groups = nil
+
+    -- scratch / debug fields (safe to clear)
+    self._scratch_candidates = nil
+    self._scratch_ids        = nil
+    self._scratch_nv         = nil
+    self._scratch_rv         = nil
 end
+
 
 ----------------------------------------------------------------------
 -- Player creation (Map method)
