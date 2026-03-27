@@ -104,6 +104,10 @@ local PLAYER_DEFAULTS = {
     path_curve_tightness = 4,
     path_curve_roundness = 3,
     path_curve_max_distance_from_corner = 10,
+
+    collision_enabled = false,
+    collision_radius  = 6,
+    collision_groups  = nil,
 }
 
 function PlayerConfig.new(options)
@@ -115,13 +119,16 @@ function PlayerConfig.new(options)
         path_curve_tightness = options.path_curve_tightness or PLAYER_DEFAULTS.path_curve_tightness,
         path_curve_roundness = options.path_curve_roundness or PLAYER_DEFAULTS.path_curve_roundness,
         path_curve_max_distance_from_corner = options.path_curve_max_distance_from_corner or PLAYER_DEFAULTS.path_curve_max_distance_from_corner,
+        collision_enabled = options.collision_enabled or PLAYER_DEFAULTS.collision_enabled,
+        collision_radius  = options.collision_radius  or PLAYER_DEFAULTS.collision_radius,
+        collision_groups  = options.collision_groups  or PLAYER_DEFAULTS.collision_groups,
     }
 
     return setmetatable(self, PlayerConfig)
 end
 
 function PlayerConfig:validate()
-    -- Validate numeric fields
+    -- existing numeric validations
     assert(type(self.gameobject_threshold) == "number",
         "PlayerConfig: gameobject_threshold must be a number")
 
@@ -134,11 +141,30 @@ function PlayerConfig:validate()
     assert(type(self.path_curve_max_distance_from_corner) == "number",
         "PlayerConfig: path_curve_max_distance_from_corner must be a number")
 
-    -- Validate boolean fields
+    -- existing boolean validation
     assert(type(self.allow_enter_on_route) == "boolean",
         "PlayerConfig: allow_enter_on_route must be a boolean")
 
-    -- Optional: enforce ranges
+    -- NEW collision validations
+    assert(type(self.collision_enabled) == "boolean",
+        "PlayerConfig: collision_enabled must be a boolean")
+
+    assert(type(self.collision_radius) == "number",
+        "PlayerConfig: collision_radius must be a number")
+
+    assert(type(self.collision_groups) == "table",
+        "PlayerConfig: collision_groups must be a list of group names")
+
+    for i, group in ipairs(self.collision_groups) do
+        assert(type(group) == "string",
+            "PlayerConfig: collision_groups must contain strings")
+    end
+
+
+    -- existing range checks
+    assert(self.gameobject_threshold >= 0,
+        "PlayerConfig: gameobject_threshold must be >= 0")
+
     assert(self.path_curve_tightness >= 0,
         "PlayerConfig: path_curve_tightness must be >= 0")
 
@@ -148,8 +174,12 @@ function PlayerConfig:validate()
     assert(self.path_curve_max_distance_from_corner >= 0,
         "PlayerConfig: path_curve_max_distance_from_corner must be >= 0")
 
+    assert(self.collision_radius >= 0,
+        "PlayerConfig: collision_radius must be >= 0")
+
     return true
 end
+
 
 -- debug drawing defaults (shared)
 local debug_node_color          = vmath.vector4(1, 0, 1, 1)
@@ -1161,28 +1191,29 @@ end
 ----------------------------------------------------------------------
 -- Player update (map-bound)
 ----------------------------------------------------------------------
-
 function Map:player_update(self_player, speed)
     assert(self_player, "You must provide defold move data")
-    assert(go, "You must provide a game object")
 
-    local current_position = go.get_position()
-    local path             = self_player.path
-    local path_index       = self_player.path_index
+    local path       = self_player.path
+    local path_index = self_player.path_index
 
-    -- 1. Fine-grained path invalidation
+    ----------------------------------------------------------------------
+    -- 1. Path invalidation
+    ----------------------------------------------------------------------
     if path_index ~= 0 then
         local ids = self_player.path_node_ids
         if ids and #ids > 0 then
             if self:compute_path_version(ids) ~= self_player.path_version then
-                self_player = self:move_internal_initialize(current_position, self_player)
+                self_player = self:move_internal_initialize(self_player.current_position, self_player)
                 path = self_player.path
                 path_index = self_player.path_index
             end
         end
     end
 
+    ----------------------------------------------------------------------
     -- 2. Rotation smoothing helper
+    ----------------------------------------------------------------------
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
         if not self_player.initial_angle then
@@ -1214,7 +1245,9 @@ function Map:player_update(self_player, speed)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
+    ----------------------------------------------------------------------
     -- 3. No path
+    ----------------------------------------------------------------------
     if path_index == 0 then
         if self_player.initial_angle then
             local cf = self_player.current_face_vector
@@ -1222,23 +1255,296 @@ function Map:player_update(self_player, speed)
         end
 
         return {
-            position       = current_position,
+            position       = self_player.current_position,
             rotation       = rotation,
             is_reached     = false,
             destination_id = self_player.destination_list[self_player.destination_index],
         }
     end
 
-    -- 4. Movement loop
-    local threshold_sq = (self_player.config.gameobject_threshold + 1) * (self_player.config.gameobject_threshold + 1)
-    local last_index   = #path
+    ----------------------------------------------------------------------
+    -- 4. Collision avoidance helper
+    ----------------------------------------------------------------------
+    local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
+        local cfg = self_player.config
+        if not cfg.collision_enabled then
+            self_player._debug_avoid_x = 0
+            self_player._debug_avoid_y = 0
+            self_player._debug_final_x = dir_x
+            self_player._debug_final_y = dir_y
+            self_player._last_dir_x = dir_x
+            self_player._last_dir_y = dir_y
+            self_player._last_speed = speed
+            self_player._smooth_speed = speed
+            self_player._smooth_dir_x = dir_x
+            self_player._smooth_dir_y = dir_y
+            return dir_x, dir_y, speed
+        end
+
+        local px = self_player.current_position.x
+        local py = self_player.current_position.y
+
+        local radius = cfg.collision_radius
+        local radius_sq = radius * radius
+
+        local avoid_x, avoid_y = 0, 0
+        local slow_factor = 1
+
+        local strongest_reactive = 0
+        local strongest_predictive = 0
+        local strongest_queueing = 0
+
+        ------------------------------------------------------------------
+        -- Dynamic lookahead
+        ------------------------------------------------------------------
+        local lookahead = 0.25 + speed * 0.02
+        if lookahead < 0.2 then lookahead = 0.2 end
+        if lookahead > 0.6 then lookahead = 0.6 end
+
+        local future_px = px + dir_x * speed * lookahead
+        local future_py = py + dir_y * speed * lookahead
+
+        ------------------------------------------------------------------
+        -- Build candidate list
+        ------------------------------------------------------------------
+        local candidates = {}
+        if cfg.collision_groups then
+            for _, group in ipairs(cfg.collision_groups) do
+                local g = map.players_by_group[group]
+                if g then
+                    for key in pairs(g) do
+                        candidates[#candidates+1] = map.players[key]
+                    end
+                end
+            end
+        else
+            for _, p in pairs(map.players) do
+                candidates[#candidates+1] = p
+            end
+        end
+
+
+        ------------------------------------------------------------------
+        -- Helper: lateral force
+        ------------------------------------------------------------------
+        local function apply_lateral(dx, dy, dist, overlap, scale, predictive)
+            local rx = dx / dist
+            local ry = dy / dist
+
+            local fx = dir_x
+            local fy = dir_y
+
+            local lx = -fy
+            local ly =  fx
+
+            local lateral = rx * lx + ry * ly
+            if lateral == 0 then
+                lateral = (self_player.id % 2 == 0) and 1 or -1
+            end
+
+            local force = overlap * (radius * scale)
+
+            avoid_x = avoid_x + lx * lateral * force
+            avoid_y = avoid_y + ly * lateral * force
+
+            local dot = dx * fx + dy * fy
+            if dot < 0 then
+                local max_slow = predictive and 0.9 or 0.8
+                local factor = 1 - overlap * max_slow
+                if factor < slow_factor then slow_factor = factor end
+            end
+        end
+
+        ------------------------------------------------------------------
+        -- Main loop
+        ------------------------------------------------------------------
+        for _, other in ipairs(candidates) do
+            if other ~= self_player then
+                local ox = other.current_position.x
+                local oy = other.current_position.y
+
+                -- Predict other
+                local ofx, ofy = ox, oy
+                if other._last_dir_x then
+                    ofx = ox + other._last_dir_x * other._last_speed * lookahead
+                    ofy = oy + other._last_dir_y * other._last_speed * lookahead
+                end
+
+                -- Current distance
+                local dx = px - ox
+                local dy = py - oy
+                local dist_sq = dx*dx + dy*dy
+
+                -- Future distance
+                local fdx = future_px - ofx
+                local fdy = future_py - ofy
+                local fdist_sq = fdx*fdx + fdy*fdy
+
+                ----------------------------------------------------------
+                -- 1. Reactive avoidance
+                ----------------------------------------------------------
+                if dist_sq < radius_sq and dist_sq > 0 then
+                    local dist = math.sqrt(dist_sq)
+                    local overlap = (radius - dist) / radius
+                    strongest_reactive = math.max(strongest_reactive, overlap)
+                    apply_lateral(dx, dy, dist, overlap, 0.25, false)
+                end
+
+                ----------------------------------------------------------
+                -- 2. Predictive avoidance
+                ----------------------------------------------------------
+                if fdist_sq < radius_sq and fdist_sq > 0 then
+                    local fdist = math.sqrt(fdist_sq)
+                    local foverlap = (radius - fdist) / radius
+                    strongest_predictive = math.max(strongest_predictive, foverlap)
+                    apply_lateral(fdx, fdy, fdist, foverlap, 0.45, true)
+                end
+
+                ----------------------------------------------------------
+                -- 3. Longitudinal queueing (same direction)
+                ----------------------------------------------------------
+                if other._last_dir_x and other._last_dir_y then
+                    local align = dir_x * other._last_dir_x + dir_y * other._last_dir_y
+
+                    if align > 0.7 then
+                        local dx2 = ox - px
+                        local dy2 = oy - py
+                        local dist2_sq = dx2*dx2 + dy2*dy2
+
+                        local desired = radius * 1.5
+                        local desired_sq = desired * desired
+
+                        if dist2_sq < desired_sq and dist2_sq > 0 then
+                            local dist2 = math.sqrt(dist2_sq)
+                            local overlap2 = (desired - dist2) / desired
+                            strongest_queueing = math.max(strongest_queueing, overlap2)
+
+                            -- Strong slowdown
+                            local factor = 1 - overlap2 * 0.95
+                            if factor < slow_factor then slow_factor = factor end
+
+                            -- Backward push
+                            avoid_x = avoid_x - dir_x * overlap2 * (radius * 0.2)
+                            avoid_y = avoid_y - dir_y * overlap2 * (radius * 0.2)
+
+                            -- Tiny lateral offset
+                            local side = (self_player.id % 2 == 0) and 1 or -1
+                            avoid_x = avoid_x + (-dir_y) * side * overlap2 * 0.1
+                            avoid_y = avoid_y + ( dir_x) * side * overlap2 * 0.1
+                        end
+                    end
+                end
+            end
+        end
+
+        ------------------------------------------------------------------
+        -- No avoidance
+        ------------------------------------------------------------------
+        if strongest_reactive == 0 and strongest_predictive == 0 and strongest_queueing == 0 then
+            self_player._debug_avoid_x = 0
+            self_player._debug_avoid_y = 0
+            self_player._debug_final_x = dir_x
+            self_player._debug_final_y = dir_y
+
+            self_player._last_dir_x = dir_x
+            self_player._last_dir_y = dir_y
+            self_player._last_speed = speed
+
+            self_player._smooth_speed = speed
+            self_player._smooth_dir_x = dir_x
+            self_player._smooth_dir_y = dir_y
+
+            return dir_x, dir_y, speed
+        end
+
+        ------------------------------------------------------------------
+        -- Combine forces
+        ------------------------------------------------------------------
+        local predictive_weight = strongest_predictive * 0.6
+        if predictive_weight > 1 then predictive_weight = 1 end
+
+        local base_weight = 1 - predictive_weight
+        if base_weight < 0 then base_weight = 0 end
+
+        local raw_x = dir_x * base_weight + avoid_x
+        local raw_y = dir_y * base_weight + avoid_y
+
+        local len = math.sqrt(raw_x*raw_x + raw_y*raw_y)
+        if len > 0 then
+            raw_x = raw_x / len
+            raw_y = raw_y / len
+        else
+            raw_x, raw_y = 0, 0
+        end
+
+        ------------------------------------------------------------------
+        -- DIRECTION SMOOTHING
+        ------------------------------------------------------------------
+        local dir_smoothing = 0.22
+
+        self_player._smooth_dir_x = self_player._smooth_dir_x or raw_x
+        self_player._smooth_dir_y = self_player._smooth_dir_y or raw_y
+
+        self_player._smooth_dir_x =
+            self_player._smooth_dir_x +
+            (raw_x - self_player._smooth_dir_x) * dir_smoothing
+
+        self_player._smooth_dir_y =
+            self_player._smooth_dir_y +
+            (raw_y - self_player._smooth_dir_y) * dir_smoothing
+
+        -- normalize smoothed direction
+        local slen = math.sqrt(
+            self_player._smooth_dir_x * self_player._smooth_dir_x +
+            self_player._smooth_dir_y * self_player._smooth_dir_y
+        )
+        if slen > 0 then
+            self_player._smooth_dir_x = self_player._smooth_dir_x / slen
+            self_player._smooth_dir_y = self_player._smooth_dir_y / slen
+        end
+
+        ------------------------------------------------------------------
+        -- SPEED SMOOTHING
+        ------------------------------------------------------------------
+        local target_speed = speed * slow_factor
+        local speed_smoothing = 0.18
+
+        self_player._smooth_speed = self_player._smooth_speed or target_speed
+        self_player._smooth_speed =
+            self_player._smooth_speed +
+            (target_speed - self_player._smooth_speed) * speed_smoothing
+
+        local final_speed = self_player._smooth_speed
+
+        ------------------------------------------------------------------
+        -- Debug + predictive memory
+        ------------------------------------------------------------------
+        self_player._debug_avoid_x = avoid_x
+        self_player._debug_avoid_y = avoid_y
+        self_player._debug_final_x = self_player._smooth_dir_x
+        self_player._debug_final_y = self_player._smooth_dir_y
+
+        self_player._last_dir_x = self_player._smooth_dir_x
+        self_player._last_dir_y = self_player._smooth_dir_y
+        self_player._last_speed = final_speed
+
+        return self_player._smooth_dir_x, self_player._smooth_dir_y, final_speed
+    end
+
+    ----------------------------------------------------------------------
+    -- 5. Movement loop
+    ----------------------------------------------------------------------
+    local threshold_sq = (self_player.config.gameobject_threshold + 1)
+    threshold_sq = threshold_sq * threshold_sq
+
+    local last_index = #path
     local map_node_list = self.map_node_list
 
     for i = path_index, last_index do
         local target = path[i]
 
-        local vx = target.x - current_position.x
-        local vy = target.y - current_position.y
+        local vx = target.x - self_player.current_position.x
+        local vy = target.y - self_player.current_position.y
         local dist_sq = vx*vx + vy*vy
 
         if dist_sq > threshold_sq then
@@ -1248,12 +1554,18 @@ function Map:player_update(self_player, speed)
             local dir_x = vx * inv_len
             local dir_y = vy * inv_len
 
+            -- collision avoidance
+            dir_x, dir_y, speed = compute_collision_avoidance(self, self_player, dir_x, dir_y, speed)
+
             if self_player.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
             end
 
-            local new_x = current_position.x + dir_x * speed
-            local new_y = current_position.y + dir_y * speed
+            local new_x = self_player.current_position.x + dir_x * speed
+            local new_y = self_player.current_position.y + dir_y * speed
+
+            self_player.current_position.x = new_x
+            self_player.current_position.y = new_y
 
             return {
                 position       = vmath.vector3(new_x, new_y, 0),
@@ -1263,12 +1575,15 @@ function Map:player_update(self_player, speed)
             }
         end
 
+        ------------------------------------------------------------------
+        -- 6. Destination reached
+        ------------------------------------------------------------------
         if i == last_index then
             local dest_id  = self_player.destination_list[self_player.destination_index]
             local dest_pos = map_node_list[dest_id].position
 
-            local dx = current_position.x - dest_pos.x
-            local dy = current_position.y - dest_pos.y
+            local dx = self_player.current_position.x - dest_pos.x
+            local dy = self_player.current_position.y - dest_pos.y
             local is_reached = (dx*dx + dy*dy <= threshold_sq)
 
             if self_player.initial_angle then
@@ -1281,7 +1596,7 @@ function Map:player_update(self_player, speed)
                 if self_player.route_type == M.ROUTETYPE.ONETIME then
                     if self_player.destination_index < count then
                         self_player.destination_index = self_player.destination_index + 1
-                        self_player = self:move_internal_initialize(current_position, self_player)
+                        self_player = self:move_internal_initialize(self_player.current_position, self_player)
                     end
                 elseif self_player.route_type == M.ROUTETYPE.SHUFFLE then
                     if count > 1 then
@@ -1290,7 +1605,7 @@ function Map:player_update(self_player, speed)
                             new_id = math.random(count)
                         until new_id ~= self_player.destination_index
                         self_player.destination_index = new_id
-                        self_player = self:move_internal_initialize(current_position, self_player)
+                        self_player = self:move_internal_initialize(self_player.current_position, self_player)
                     end
                 elseif self_player.route_type == M.ROUTETYPE.CYCLE then
                     if self_player.destination_index < count then
@@ -1298,12 +1613,12 @@ function Map:player_update(self_player, speed)
                     else
                         self_player.destination_index = 1
                     end
-                    self_player = self:move_internal_initialize(current_position, self_player)
+                    self_player = self:move_internal_initialize(self_player.current_position, self_player)
                 end
             end
 
             return {
-                position       = current_position,
+                position       = self_player.current_position,
                 rotation       = rotation,
                 is_reached     = is_reached,
                 destination_id = dest_id,
@@ -1405,13 +1720,12 @@ end
 -- Debug: player
 ----------------------------------------------------------------------
 
-local function debug_draw_player(map, self_player, color, is_show_projection, is_show_directions, is_show_snap_radius)
+local function debug_draw_player(map, self_player, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
     assert(self_player, "You must provide movement data")
     assert(color, "You must provide a color")
 
     local path = self_player.path
     local start_i = self_player.path_index
-    local pos = go.get_position()
 
     if is_show_snap_radius then
         local r = self_player.config.gameobject_threshold + 1
@@ -1420,7 +1734,7 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
 
         for i = 0, steps do
             local angle = (i / steps) * 6.28318530718
-            local p = pos + vmath.vector3(math.cos(angle) * r, math.sin(angle) * r, 0)
+            local p = self_player.current_position + vmath.vector3(math.cos(angle) * r, math.sin(angle) * r, 0)
 
             if prev then
                 msg.post("@render:", "draw_line", {
@@ -1435,7 +1749,7 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
 
     if start_i == 0 then
         if is_show_projection then
-            local result = map:calculate_to_nearest_route(pos)
+            local result = map:calculate_to_nearest_route(self_player.current_position)
             if result then
                 local proj = result.position_on_route
                 local from_pos = map.map_node_list[result.route_from_id].position
@@ -1448,7 +1762,7 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
                 })
 
                 msg.post("@render:", "draw_line", {
-                    start_point = pos,
+                    start_point = self_player.current_position,
                     end_point   = proj,
                     color       = vmath.vector4(1, 1, 0, 1)
                 })
@@ -1521,20 +1835,20 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
 
     if is_show_projection then
         local target = path[start_i]
-        local dx = pos.x - target.x
-        local dy = pos.y - target.y
+        local dx = self_player.current_position.x - target.x
+        local dy = self_player.current_position.y - target.y
         local dist_sq = dx*dx + dy*dy
         local threshold_sq = (self_player.config.gameobject_threshold + 1) * (self_player.config.gameobject_threshold + 1)
 
         if dist_sq > threshold_sq then
-            local result = map:calculate_to_nearest_route(pos)
+            local result = map:calculate_to_nearest_route(self_player.current_position)
             if result then
                 local proj = result.position_on_route
                 local from_pos = map.map_node_list[result.route_from_id].position
                 local to_pos   = map.map_node_list[result.route_to_id].position
 
                 msg.post("@render:", "draw_line", { start_point = from_pos, end_point = to_pos, color = vmath.vector4(1,1,0,1) })
-                msg.post("@render:", "draw_line", { start_point = pos, end_point = proj, color = vmath.vector4(1,1,0,1) })
+                msg.post("@render:", "draw_line", { start_point = self_player.current_position, end_point = proj, color = vmath.vector4(1,1,0,1) })
 
                 local r = 4
                 local steps = 10
@@ -1556,6 +1870,74 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
             end
         end
     end
+
+    if is_show_collision and self_player.config.collision_enabled then
+        ----------------------------------------------------------
+        -- 1. Draw collision radius
+        ----------------------------------------------------------
+        local steps = 20
+        local radius = self_player.config.collision_radius
+        local prev = nil
+
+        for i = 0, steps do
+            local a = (i / steps) * 6.28318
+            local x = self_player.current_position.x + math.cos(a) * radius
+            local y = self_player.current_position.y + math.sin(a) * radius
+            local p = vmath.vector3(x, y, 0)
+
+            if prev then
+                msg.post("@render:", "draw_line", {
+                    start_point = prev,
+                    end_point   = p,
+                    color       = vmath.vector4(1, 0.2, 0.2, 0.8)
+                })
+            end
+            prev = p
+        end
+
+        ----------------------------------------------------------
+        -- 2. Draw predicted future position
+        ----------------------------------------------------------
+        if self_player._last_dir_x then
+            local lookahead = 0.25
+            local fx = self_player.current_position.x + self_player._last_dir_x * self_player._last_speed * lookahead
+            local fy = self_player.current_position.y + self_player._last_dir_y * self_player._last_speed * lookahead
+
+            msg.post("@render:", "draw_line", {
+                start_point = self_player.current_position,
+                end_point   = vmath.vector3(fx, fy, 0),
+                color       = vmath.vector4(0.2, 0.6, 1, 1)
+            })
+        end
+
+        ----------------------------------------------------------
+        -- 3. Draw avoidance vector (if present)
+        ----------------------------------------------------------
+        if self_player._debug_avoid_x then
+            local ax = self_player.current_position.x + self_player._debug_avoid_x * 20
+            local ay = self_player.current_position.y + self_player._debug_avoid_y * 20
+
+            msg.post("@render:", "draw_line", {
+                start_point = self_player.current_position,
+                end_point   = vmath.vector3(ax, ay, 0),
+                color       = vmath.vector4(1, 0.8, 0.1, 1)
+            })
+        end
+
+        ----------------------------------------------------------
+        -- 4. Draw final movement direction
+        ----------------------------------------------------------
+        if self_player._debug_final_x then
+            local fx = self_player.current_position.x + self_player._debug_final_x * 20
+            local fy = self_player.current_position.y + self_player._debug_final_y * 20
+
+            msg.post("@render:", "draw_line", {
+                start_point = self_player.current_position,
+                end_point   = vmath.vector3(fx, fy, 0),
+                color       = vmath.vector4(0.1, 1, 0.3, 1)
+            })
+        end
+    end
 end
 
 ----------------------------------------------------------------------
@@ -1566,8 +1948,8 @@ function Player:update(speed)
     return self.map:player_update(self, speed)
 end
 
-function Player:debug_draw(color, is_show_projection, is_show_directions, is_show_snap_radius)
-    return debug_draw_player(self.map, self, color, is_show_projection, is_show_directions, is_show_snap_radius)
+function Player:debug_draw(color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
+    return debug_draw_player(self.map, self, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
 end
 
 function Player:is_in_group(group)
@@ -1677,7 +2059,8 @@ function Map:create_player(key, groups, initial_position,
         path                                  = {},
         path_node_ids                         = {},
         path_version                          = 0,
-
+ 
+        current_position                      = initial_position,
         current_face_vector                   = initial_face_vector,
         initial_angle                         = initial_angle,
 

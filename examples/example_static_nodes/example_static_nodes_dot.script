@@ -6,16 +6,21 @@ function init(self)
 	self.map = defgraph.create_or_get_map("MyMap")
 
 	local config = defgraph.PlayerConfig.new({
-		gameobject_threshold = 1,
+		gameobject_threshold = 3,
 		allow_enter_on_route = true,
 		path_curve_tightness = 3,
 		path_curve_roundness = 3,
 		path_curve_max_distance_from_corner = 15,
+
+		collision_enabled = true,
+		collision_radius = 10,
+		collision_groups = { "myGroup" },
+		debug_collision = true
 	})
 
 	-- initializing defgraph player
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
-										{},
+										{ "myGroup" },
 										go.get_position(),
 										{ 6, 18, 14, 2, 4, 10 },
 										defgraph.ROUTETYPE.SHUFFLE,
@@ -25,7 +30,7 @@ end
 
 function update(self, dt)
 	-- defgraph player calculation loop
-	self.update_result = self.player:update(100 * dt)
+	self.update_result = self.player:update(50 * dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)
@@ -36,5 +41,5 @@ function update(self, dt)
 	end
 
 	-- debug draw defgraph player with specific color
-	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), true, true, true)
+	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), false, false, false, true)
 end

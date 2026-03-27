@@ -11,11 +11,15 @@ function init(self)
 		path_curve_tightness = 3,
 		path_curve_roundness = 1,
 		path_curve_max_distance_from_corner = 100,
+
+		collision_enabled = true,
+		collision_radius = 20,
+		collision_groups = { "myGroup" }
 	})
 
 	-- initializing defgraph player with face direction
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
-										{},
+										{ "myGroup" },
 										go.get_position(),
 										{ 36, 1 },
 										defgraph.ROUTETYPE.CYCLE,
@@ -33,7 +37,7 @@ function update(self, dt)
 	-- update go rotation based of returned result
 	go.set_rotation(self.update_result.rotation)
 
-	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), true, true, true)
+	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), true, true, true, true)
 
 	-- you can check if go reached to the destination
 	if self.update_result.is_reached then
