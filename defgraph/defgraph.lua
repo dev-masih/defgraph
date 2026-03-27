@@ -113,11 +113,16 @@ local COLLISION_BEHAVIOR_PRESETS = {
         queue_spacing_factor    = 1.9,
         queue_slow              = 0.97,
 
-        path_recentering        = 0.65,   -- strongest snap-back
+        path_recentering        = 0.65,
 
         dir_smoothing           = 0.32,
         speed_smoothing         = 0.26,
+
+        -- NEW:
+        density_radius_factor   = 3.0,   -- radius * 3
+        density_slow_factor     = 0.50,  -- strong slowdown
     },
+
     [M.CollisionBehavior.Cautious] = {
         lookahead_min           = 0.32,
         lookahead_max           = 0.70,
@@ -136,7 +141,11 @@ local COLLISION_BEHAVIOR_PRESETS = {
 
         dir_smoothing           = 0.26,
         speed_smoothing         = 0.22,
+
+        density_radius_factor   = 2.8,
+        density_slow_factor     = 0.40,
     },
+
     [M.CollisionBehavior.Balanced] = {
         lookahead_min           = 0.25,
         lookahead_max           = 0.60,
@@ -155,7 +164,11 @@ local COLLISION_BEHAVIOR_PRESETS = {
 
         dir_smoothing           = 0.22,
         speed_smoothing         = 0.18,
+
+        density_radius_factor   = 2.5,
+        density_slow_factor     = 0.30,
     },
+
     [M.CollisionBehavior.Reactive] = {
         lookahead_min           = 0.20,
         lookahead_max           = 0.50,
@@ -174,7 +187,11 @@ local COLLISION_BEHAVIOR_PRESETS = {
 
         dir_smoothing           = 0.18,
         speed_smoothing         = 0.14,
+
+        density_radius_factor   = 2.2,
+        density_slow_factor     = 0.20,
     },
+
     [M.CollisionBehavior.SuperReactive] = {
         lookahead_min           = 0.15,
         lookahead_max           = 0.40,
@@ -189,10 +206,13 @@ local COLLISION_BEHAVIOR_PRESETS = {
         queue_spacing_factor    = 1.2,
         queue_slow              = 0.85,
 
-        path_recentering        = 0.30,   -- least snap-back
+        path_recentering        = 0.30,
 
         dir_smoothing           = 0.12,
         speed_smoothing         = 0.10,
+
+        density_radius_factor   = 2.0,
+        density_slow_factor     = 0.10,  -- barely slows down
     },
 }
 
@@ -1388,11 +1408,18 @@ function Map:player_update(self_player, speed)
             self_player._smooth_speed  = speed
             self_player._smooth_dir_x  = dir_x
             self_player._smooth_dir_y  = dir_y
+            self_player._debug_density = 0
             return dir_x, dir_y, speed
         end
 
+        ------------------------------------------------------------------
+        -- Load preset
+        ------------------------------------------------------------------
         local preset = COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
 
+        ------------------------------------------------------------------
+        -- Precompute values
+        ------------------------------------------------------------------
         local px = self_player.current_position.x
         local py = self_player.current_position.y
 
@@ -1407,7 +1434,7 @@ function Map:player_update(self_player, speed)
         local strongest_queueing   = 0
 
         ------------------------------------------------------------------
-        -- Dynamic lookahead
+        -- Lookahead (no sqrt)
         ------------------------------------------------------------------
         local lookahead =
             preset.lookahead_min +
@@ -1420,118 +1447,150 @@ function Map:player_update(self_player, speed)
         local future_py = py + dir_y * speed * lookahead
 
         ------------------------------------------------------------------
-        -- Build candidate list
+        -- Build candidate list (fast)
         ------------------------------------------------------------------
-        local candidates = {}
+        local candidates = map._cached_collision_candidates or {}
+        local count = 0
+
         if cfg.collision_groups then
             for _, group in ipairs(cfg.collision_groups) do
                 local g = map.players_by_group[group]
                 if g then
                     for key in pairs(g) do
-                        candidates[#candidates+1] = map.players[key]
+                        count = count + 1
+                        candidates[count] = map.players[key]
                     end
                 end
             end
         else
             for _, p in pairs(map.players) do
-                candidates[#candidates+1] = p
+                count = count + 1
+                candidates[count] = p
             end
         end
 
         ------------------------------------------------------------------
-        -- Helper: lateral force
+        -- Precompute path perpendicular
         ------------------------------------------------------------------
-        local function apply_lateral(dx, dy, dist, overlap, scale, predictive)
-            local rx = dx / dist
-            local ry = dy / dist
-
-            local fx = dir_x
-            local fy = dir_y
-
-            local lx = -fy
-            local ly =  fx
-
-            local lateral = rx * lx + ry * ly
-            if lateral == 0 then
-                lateral = (self_player.id % 2 == 0) and 1 or -1
-            end
-
-            local force = overlap * (radius * scale)
-
-            avoid_x = avoid_x + lx * lateral * force
-            avoid_y = avoid_y + ly * lateral * force
-
-            local dot = dx * fx + dy * fy
-            if dot < 0 then
-                local max_slow = predictive and preset.predictive_slow or preset.reactive_slow
-                local factor   = 1 - overlap * max_slow
-                if factor < slow_factor then slow_factor = factor end
-            end
-        end
+        local lx = -dir_y
+        local ly =  dir_x
 
         ------------------------------------------------------------------
-        -- Main loop
+        -- Main loop (hot path)
         ------------------------------------------------------------------
-        for _, other in ipairs(candidates) do
+        for i = 1, count do
+            local other = candidates[i]
             if other ~= self_player then
                 local ox = other.current_position.x
                 local oy = other.current_position.y
 
+                ----------------------------------------------------------
                 -- Predict other
-                local ofx, ofy = ox, oy
-                if other._last_dir_x then
-                    ofx = ox + other._last_dir_x * other._last_speed * lookahead
+                ----------------------------------------------------------
+                local ofx = ox
+                local ofy = oy
+
+                local odx = other._last_dir_x
+                if odx then
+                    ofx = ox + odx * other._last_speed * lookahead
                     ofy = oy + other._last_dir_y * other._last_speed * lookahead
                 end
 
-                -- Current distance
-                local dx      = px - ox
-                local dy      = py - oy
+                ----------------------------------------------------------
+                -- Current distance (no sqrt)
+                ----------------------------------------------------------
+                local dx = px - ox
+                local dy = py - oy
                 local dist_sq = dx*dx + dy*dy
 
-                -- Future distance
-                local fdx      = future_px - ofx
-                local fdy      = future_py - ofy
+                ----------------------------------------------------------
+                -- Future distance (no sqrt)
+                ----------------------------------------------------------
+                local fdx = future_px - ofx
+                local fdy = future_py - ofy
                 local fdist_sq = fdx*fdx + fdy*fdy
 
                 ----------------------------------------------------------
                 -- 1. Reactive avoidance
                 ----------------------------------------------------------
                 if dist_sq < radius_sq and dist_sq > 0 then
-                    local dist    = math.sqrt(dist_sq)
-                    local overlap = (radius - dist) / radius
-                    strongest_reactive = math.max(strongest_reactive, overlap)
-                    apply_lateral(dx, dy, dist, overlap, preset.reactive_scale, false)
+                    local dist = math.sqrt(dist_sq)
+                    local overlap = (radius - dist) * (1 / radius)
+
+                    if overlap > strongest_reactive then
+                        strongest_reactive = overlap
+                    end
+
+                    -- lateral projection
+                    local rx = dx / dist
+                    local ry = dy / dist
+                    local lateral = rx * lx + ry * ly
+                    if lateral == 0 then
+                        lateral = (self_player.id % 2 == 0) and 1 or -1
+                    end
+
+                    local force = overlap * (radius * preset.reactive_scale)
+                    avoid_x = avoid_x + lx * lateral * force
+                    avoid_y = avoid_y + ly * lateral * force
+
+                    -- slowdown
+                    local dot = dx * dir_x + dy * dir_y
+                    if dot < 0 then
+                        local factor = 1 - overlap * preset.reactive_slow
+                        if factor < slow_factor then slow_factor = factor end
+                    end
                 end
 
                 ----------------------------------------------------------
                 -- 2. Predictive avoidance
                 ----------------------------------------------------------
                 if fdist_sq < radius_sq and fdist_sq > 0 then
-                    local fdist    = math.sqrt(fdist_sq)
-                    local foverlap = (radius - fdist) / radius
-                    strongest_predictive = math.max(strongest_predictive, foverlap)
-                    apply_lateral(fdx, fdy, fdist, foverlap, preset.predictive_scale, true)
+                    local fdist = math.sqrt(fdist_sq)
+                    local foverlap = (radius - fdist) * (1 / radius)
+
+                    if foverlap > strongest_predictive then
+                        strongest_predictive = foverlap
+                    end
+
+                    local rx = fdx / fdist
+                    local ry = fdy / fdist
+                    local lateral = rx * lx + ry * ly
+                    if lateral == 0 then
+                        lateral = (self_player.id % 2 == 0) and 1 or -1
+                    end
+
+                    local force = foverlap * (radius * preset.predictive_scale)
+                    avoid_x = avoid_x + lx * lateral * force
+                    avoid_y = avoid_y + ly * lateral * force
+
+                    local dot = fdx * dir_x + fdy * dir_y
+                    if dot < 0 then
+                        local factor = 1 - foverlap * preset.predictive_slow
+                        if factor < slow_factor then slow_factor = factor end
+                    end
                 end
 
                 ----------------------------------------------------------
-                -- 3. Longitudinal queueing
+                -- 3. Queueing (same direction)
                 ----------------------------------------------------------
-                if other._last_dir_x and other._last_dir_y then
-                    local align = dir_x * other._last_dir_x + dir_y * other._last_dir_y
-
+                local odx2 = other._last_dir_x
+                if odx2 then
+                    local align = dir_x * odx2 + dir_y * other._last_dir_y
                     if align > 0.7 then
-                        local dx2       = ox - px
-                        local dy2       = oy - py
-                        local dist2_sq  = dx2*dx2 + dy2*dy2
+                        local dx2 = ox - px
+                        local dy2 = oy - py
+                        local dist2_sq = dx2*dx2 + dy2*dy2
 
-                        local desired    = radius * preset.queue_spacing_factor
+                        local desired = radius * preset.queue_spacing_factor
                         local desired_sq = desired * desired
 
                         if dist2_sq < desired_sq and dist2_sq > 0 then
-                            local dist2    = math.sqrt(dist2_sq)
+                            local dist2 = math.sqrt(dist2_sq)
                             local overlap2 = (desired - dist2) / desired
-                            strongest_queueing = math.max(strongest_queueing, overlap2)
+
+                            if overlap2 > strongest_queueing then
+                                strongest_queueing = overlap2
+                            end
 
                             local factor = 1 - overlap2 * preset.queue_slow
                             if factor < slow_factor then slow_factor = factor end
@@ -1546,6 +1605,38 @@ function Map:player_update(self_player, speed)
                     end
                 end
             end
+        end
+
+        ------------------------------------------------------------------
+        -- 4. Density-based slowdown (no sqrt)
+        ------------------------------------------------------------------
+        local density_radius = radius * preset.density_radius_factor
+        local density_radius_sq = density_radius * density_radius
+
+        local neighbor_count = 0
+        local density_sum = 0
+
+        for i = 1, count do
+            local other = candidates[i]
+            if other ~= self_player then
+                local ox = other.current_position.x
+                local oy = other.current_position.y
+
+                local dx = px - ox
+                local dy = py - oy
+                local dist_sq = dx*dx + dy*dy
+
+                if dist_sq < density_radius_sq then
+                    neighbor_count = neighbor_count + 1
+                    density_sum = density_sum + (1 - dist_sq / density_radius_sq)
+                end
+            end
+        end
+
+        if neighbor_count > 0 then
+            local density = density_sum / neighbor_count
+            local density_slow = 1 - density * preset.density_slow_factor
+            if density_slow < slow_factor then slow_factor = density_slow end
         end
 
         ------------------------------------------------------------------
@@ -1580,83 +1671,79 @@ function Map:player_update(self_player, speed)
         local raw_x = dir_x * base_weight + avoid_x
         local raw_y = dir_y * base_weight + avoid_y
 
-        local len = math.sqrt(raw_x*raw_x + raw_y*raw_y)
+        ------------------------------------------------------------------
+        -- Normalize (1 sqrt per frame)
+        ------------------------------------------------------------------
+        local len = raw_x*raw_x + raw_y*raw_y
         if len > 0 then
-            raw_x = raw_x / len
-            raw_y = raw_y / len
+            local inv = 1 / math.sqrt(len)
+            raw_x = raw_x * inv
+            raw_y = raw_y * inv
         else
             raw_x, raw_y = 0, 0
         end
 
         ------------------------------------------------------------------
-        -- PATH RE‑CENTERING (NEW)
+        -- Path recentering
         ------------------------------------------------------------------
         local alignment = raw_x * dir_x + raw_y * dir_y
-
         if alignment < 0.6 then
             local correction = (0.6 - alignment) * preset.path_recentering
-
             raw_x = raw_x + dir_x * correction
             raw_y = raw_y + dir_y * correction
 
-            local rlen = math.sqrt(raw_x*raw_x + raw_y*raw_y)
-            if rlen > 0 then
-                raw_x = raw_x / rlen
-                raw_y = raw_y / rlen
+            local len2 = raw_x*raw_x + raw_y*raw_y
+            if len2 > 0 then
+                local inv = 1 / math.sqrt(len2)
+                raw_x = raw_x * inv
+                raw_y = raw_y * inv
             end
         end
 
         ------------------------------------------------------------------
         -- Direction smoothing
         ------------------------------------------------------------------
-        local dir_smoothing = preset.dir_smoothing
+        local ds = preset.dir_smoothing
 
-        self_player._smooth_dir_x = self_player._smooth_dir_x or raw_x
-        self_player._smooth_dir_y = self_player._smooth_dir_y or raw_y
+        local sdx = self_player._smooth_dir_x or raw_x
+        local sdy = self_player._smooth_dir_y or raw_y
 
-        self_player._smooth_dir_x =
-            self_player._smooth_dir_x +
-            (raw_x - self_player._smooth_dir_x) * dir_smoothing
+        sdx = sdx + (raw_x - sdx) * ds
+        sdy = sdy + (raw_y - sdy) * ds
 
-        self_player._smooth_dir_y =
-            self_player._smooth_dir_y +
-            (raw_y - self_player._smooth_dir_y) * dir_smoothing
-
-        local slen = math.sqrt(
-            self_player._smooth_dir_x * self_player._smooth_dir_x +
-            self_player._smooth_dir_y * self_player._smooth_dir_y
-        )
+        local slen = sdx*sdx + sdy*sdy
         if slen > 0 then
-            self_player._smooth_dir_x = self_player._smooth_dir_x / slen
-            self_player._smooth_dir_y = self_player._smooth_dir_y / slen
+            local inv = 1 / math.sqrt(slen)
+            sdx = sdx * inv
+            sdy = sdy * inv
         end
 
         ------------------------------------------------------------------
         -- Speed smoothing
         ------------------------------------------------------------------
-        local target_speed    = speed * slow_factor
-        local speed_smoothing = preset.speed_smoothing
+        local target_speed = speed * slow_factor
+        local ss = preset.speed_smoothing
 
-        self_player._smooth_speed = self_player._smooth_speed or target_speed
-        self_player._smooth_speed =
-            self_player._smooth_speed +
-            (target_speed - self_player._smooth_speed) * speed_smoothing
-
-        local final_speed = self_player._smooth_speed
+        local smooth_speed = self_player._smooth_speed or target_speed
+        smooth_speed = smooth_speed + (target_speed - smooth_speed) * ss
 
         ------------------------------------------------------------------
-        -- Debug + predictive memory
+        -- Store debug + predictive memory
         ------------------------------------------------------------------
         self_player._debug_avoid_x = avoid_x
         self_player._debug_avoid_y = avoid_y
-        self_player._debug_final_x = self_player._smooth_dir_x
-        self_player._debug_final_y = self_player._smooth_dir_y
+        self_player._debug_final_x = sdx
+        self_player._debug_final_y = sdy
 
-        self_player._last_dir_x = self_player._smooth_dir_x
-        self_player._last_dir_y = self_player._smooth_dir_y
-        self_player._last_speed = final_speed
+        self_player._smooth_dir_x = sdx
+        self_player._smooth_dir_y = sdy
+        self_player._smooth_speed = smooth_speed
 
-        return self_player._smooth_dir_x, self_player._smooth_dir_y, final_speed
+        self_player._last_dir_x = sdx
+        self_player._last_dir_y = sdy
+        self_player._last_speed = smooth_speed
+
+        return sdx, sdy, smooth_speed
     end
 
     ----------------------------------------------------------------------
@@ -1847,7 +1934,6 @@ end
 ----------------------------------------------------------------------
 -- Debug: player
 ----------------------------------------------------------------------
-
 local function debug_draw_player(map, self_player, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
     assert(self_player, "You must provide movement data")
     assert(color, "You must provide a color")
@@ -2021,6 +2107,46 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
                 })
             end
             prev = p
+        end
+
+        ----------------------------------------------------------
+        -- 1.5 Crowd pressure / density radius (NEW)
+        ----------------------------------------------------------
+        do
+            local preset = COLLISION_BEHAVIOR_PRESETS[self_player.config.collision_behavior]
+            if preset and self_player._debug_density then
+                local density = self_player._debug_density
+                if density > 0 then
+                    local density_radius = radius * preset.density_radius_factor
+                    local steps_d = 24
+                    local prev_d = nil
+
+                    -- Color: green (low) -> yellow -> red (high)
+                    local r = density
+                    local g = 1 - math.max(0, density - 0.3) * (1 / 0.7)
+                    if g < 0 then g = 0 end
+                    local b = 0.0
+                    local a = 0.4 + density * 0.4
+
+                    local col = vmath.vector4(r, g, b, a)
+
+                    for i = 0, steps_d do
+                        local ang = (i / steps_d) * 6.28318530718
+                        local x = self_player.current_position.x + math.cos(ang) * density_radius
+                        local y = self_player.current_position.y + math.sin(ang) * density_radius
+                        local p = vmath.vector3(x, y, 0)
+
+                        if prev_d then
+                            msg.post("@render:", "draw_line", {
+                                start_point = prev_d,
+                                end_point   = p,
+                                color       = col
+                            })
+                        end
+                        prev_d = p
+                    end
+                end
+            end
         end
 
         ----------------------------------------------------------
