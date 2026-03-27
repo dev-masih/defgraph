@@ -5,7 +5,7 @@
 
 local M = {}
 
-math.randomseed(os.time() + math.floor((os.clock() * 1000000) % 2147483647))
+math.randomseed(os.time() - os.clock() * 1000)
 
 ----------------------------------------------------------------------
 -- Shared math / helpers
@@ -650,69 +650,52 @@ end
 ----------------------------------------------------------------------
 -- Map modification
 ----------------------------------------------------------------------
+
 function Map:update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
     local map_node_list = self.map_node_list
     assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
 
-    -- Update node position
     map_node_list[node_id].position = vmath.vector3(position.x, position.y, 0)
-
     local neighbors = map_node_list[node_id].neighbor_id
     local map_route_list = self.map_route_list
-
-    -- local helper to compute route table between two positions
-    local function compute_route(from_pos, to_pos)
-        local a, b, c
-
-        if from_pos.x ~= to_pos.x then
-            a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
-            b = 1
-            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
-        else
-            a = 1
-            b = 0
-            c = -from_pos.x
-        end
-
-        local ab_len2 = a * a + b * b
-        if ab_len2 == 0 then
-            -- Degenerate fallback: unit Y axis
-            a = 0
-            b = 1
-            ab_len2 = 1
-        end
-
-        local inv_ab_len = 1 / sqrt(ab_len2)
-
-        return {
-            a          = a,
-            b          = b,
-            c          = c,
-            distance   = distance(from_pos, to_pos),
-            ab_len2    = ab_len2,
-            inv_ab_len = inv_ab_len,
-        }
-    end
 
     for i = 1, #neighbors do
         local a_id = node_id
         local b_id = neighbors[i]
 
-        -- update both directions if route entries exist
         for _ = 1, 2 do
             local from_pos = map_node_list[a_id].position
             local to_pos   = map_node_list[b_id].position
 
+            local a, b, c
+            if from_pos.x ~= to_pos.x then
+                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+                b = 1
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+            else
+                a = 1
+                b = 0
+                c = -from_pos.x
+            end
+
+            local ab_len2    = a * a + b * b
+            local inv_ab_len = 1 / sqrt(ab_len2)
+
             local routes_from = map_route_list[a_id]
             if routes_from and routes_from[b_id] then
-                -- recompute route info defensively
-                routes_from[b_id] = compute_route(from_pos, to_pos)
+                routes_from[b_id] = {
+                    a          = a,
+                    b          = b,
+                    c          = c,
+                    distance   = distance(from_pos, to_pos),
+                    ab_len2    = ab_len2,
+                    inv_ab_len = inv_ab_len,
+                }
                 self:bump_route_version(a_id, b_id)
             end
 
-            -- swap to update the opposite direction in the next iteration
             a_id, b_id = b_id, a_id
         end
     end
@@ -737,110 +720,71 @@ local function map_add_oneway_route(map, source_id, destination_id, route_info)
     local map_node_list  = map.map_node_list
     local map_route_list = map.map_route_list
 
-    -- Ensure source/destination nodes exist
-    assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
-    assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
-
-    -- Ensure routes_from table exists
     local routes_from = map_route_list[source_id]
     if not routes_from then
         routes_from = {}
         map_route_list[source_id] = routes_from
     end
 
-    -- If route already exists, return it (but still ensure neighbor lists are consistent)
-    if routes_from[destination_id] then
-        -- Make sure neighbor lists contain each other (defensive)
-        local src_neighbors = map_node_list[source_id].neighbor_id
-        local dst_neighbors = map_node_list[destination_id].neighbor_id
+    if not routes_from[destination_id] then
+        if not route_info then
+            local from_pos = map_node_list[source_id].position
+            local to_pos   = map_node_list[destination_id].position
 
-        local found = false
-        for i = 1, #src_neighbors do
-            if src_neighbors[i] == destination_id then
-                found = true
-                break
+            local a, b, c
+            if from_pos.x ~= to_pos.x then
+                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+                b = 1
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+            else
+                a = 1
+                b = 0
+                c = -from_pos.x
             end
-        end
-        if not found then src_neighbors[#src_neighbors + 1] = destination_id end
 
-        found = false
-        for i = 1, #dst_neighbors do
-            if dst_neighbors[i] == source_id then
-                found = true
-                break
-            end
-        end
-        if not found then dst_neighbors[#dst_neighbors + 1] = source_id end
+            local ab_len2    = a * a + b * b
+            local inv_ab_len = 1 / sqrt(ab_len2)
 
-        map:bump_route_version(source_id, destination_id)
-        return routes_from[destination_id]
-    end
-
-    -- Compute route_info if not provided
-    if not route_info then
-        local from_pos = map_node_list[source_id].position
-        local to_pos   = map_node_list[destination_id].position
-
-        local a, b, c
-
-        -- Handle vertical line separately to avoid division by zero
-        if from_pos.x ~= to_pos.x then
-            a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
-            b = 1
-            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+            routes_from[destination_id] = {
+                a          = a,
+                b          = b,
+                c          = c,
+                distance   = distance(from_pos, to_pos),
+                ab_len2    = ab_len2,
+                inv_ab_len = inv_ab_len,
+            }
         else
-            -- vertical line: x = const -> represent as a=1, b=0, c=-x
-            a = 1
-            b = 0
-            c = -from_pos.x
+            routes_from[destination_id] = route_info
         end
 
-        local ab_len2 = a * a + b * b
-        -- Defensive guard: if ab_len2 is zero (degenerate), fall back to unit vector along x
-        if ab_len2 == 0 then
-            a = 0
-            b = 1
-            ab_len2 = 1
-        end
+        if not route_info then
+            local src_neighbors = map_node_list[source_id].neighbor_id
+            local dst_neighbors = map_node_list[destination_id].neighbor_id
 
-        local inv_ab_len = 1 / sqrt(ab_len2)
+            local found = false
+            for i = 1, #src_neighbors do
+                if src_neighbors[i] == destination_id then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                src_neighbors[#src_neighbors + 1] = destination_id
+            end
 
-        route_info = {
-            a          = a,
-            b          = b,
-            c          = c,
-            distance   = distance(from_pos, to_pos),
-            ab_len2    = ab_len2,
-            inv_ab_len = inv_ab_len,
-        }
-    end
-
-    -- Store route
-    routes_from[destination_id] = route_info
-
-    -- Ensure neighbor lists are updated so the graph topology remains consistent
-    local src_neighbors = map_node_list[source_id].neighbor_id
-    local dst_neighbors = map_node_list[destination_id].neighbor_id
-
-    local found = false
-    for i = 1, #src_neighbors do
-        if src_neighbors[i] == destination_id then
-            found = true
-            break
+            found = false
+            for i = 1, #dst_neighbors do
+                if dst_neighbors[i] == source_id then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                dst_neighbors[#dst_neighbors + 1] = source_id
+            end
         end
     end
-    if not found then src_neighbors[#src_neighbors + 1] = destination_id end
 
-    found = false
-    for i = 1, #dst_neighbors do
-        if dst_neighbors[i] == source_id then
-            found = true
-            break
-        end
-    end
-    if not found then dst_neighbors[#dst_neighbors + 1] = source_id end
-
-    -- Bump route version and return the stored route
     map:bump_route_version(source_id, destination_id)
     return routes_from[destination_id]
 end
@@ -973,6 +917,7 @@ end
 ----------------------------------------------------------------------
 -- Nearest route
 ----------------------------------------------------------------------
+
 function Map:calculate_to_nearest_route(position)
     local map_node_list  = self.map_node_list
     local map_route_list = self.map_route_list
@@ -993,32 +938,11 @@ function Map:calculate_to_nearest_route(position)
                 local near_x, near_y
                 local is_between
 
-                -- Ensure route has ab_len2 and inv_ab_len computed
-                local ab_len2 = route.ab_len2
-                local inv_ab_len = route.inv_ab_len
-                if not ab_len2 or not inv_ab_len then
-                    if not route.a or not route.b or not route.c then
-                        if from_pos.x ~= to_pos.x then
-                            route.a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
-                            route.b = 1
-                            route.c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
-                        else
-                            route.a = 1
-                            route.b = 0
-                            route.c = -from_pos.x
-                        end
-                    end
-                    ab_len2 = route.a * route.a + route.b * route.b
-                    if ab_len2 == 0 then
-                        ab_len2 = 1
-                    end
-                    inv_ab_len = 1 / sqrt(ab_len2)
-                    route.ab_len2 = ab_len2
-                    route.inv_ab_len = inv_ab_len
-                end
-
                 if from_pos.x ~= to_pos.x then
-                    local bx_ax = (route.b * position.x) - (route.a * position.y)
+                    local ab_len2 = route.ab_len2 or (route.a * route.a + route.b * route.b)
+                    route.ab_len2 = ab_len2
+                    local bx_ax   = (route.b * position.x) - (route.a * position.y)
+
                     near_x = (route.b * bx_ax - route.a * route.c) / ab_len2
                     near_y = (route.a * (-route.b * position.x + route.a * position.y) - route.b * route.c) / ab_len2
                 else
@@ -1042,15 +966,18 @@ function Map:calculate_to_nearest_route(position)
 
                 local dist
                 if is_between then
-                    dist = abs(route.a * position.x + route.b * position.y + route.c) * inv_ab_len
+                    local inv_len = route.inv_ab_len
+                    if not inv_len then
+                        local ab_len2 = route.ab_len2 or (route.a * route.a + route.b * route.b)
+                        inv_len = 1 / sqrt(ab_len2)
+                        route.ab_len2    = ab_len2
+                        route.inv_ab_len = inv_len
+                    end
+                    dist = abs(route.a * position.x + route.b * position.y + route.c) * inv_len
                 else
                     local d1 = distance(position, from_pos)
                     local d2 = distance(position, to_pos)
-                    if d1 < d2 then
-                        dist = d1
-                    else
-                        dist = d2
-                    end
+                    dist = (d1 < d2) and d1 or d2
                 end
 
                 if dist < min_dist then
@@ -1058,9 +985,7 @@ function Map:calculate_to_nearest_route(position)
                     if is_between then
                         min_x, min_y = near_x, near_y
                     else
-                        local d1 = distance(position, from_pos)
-                        local d2 = distance(position, to_pos)
-                        if d1 < d2 then
+                        if distance(position, from_pos) < distance(position, to_pos) then
                             min_x, min_y = from_pos.x, from_pos.y
                         else
                             min_x, min_y = to_pos.x, to_pos.y
@@ -1097,7 +1022,6 @@ function Map:calculate_path(start_id, finish_id)
     local map_node_list  = self.map_node_list
     local map_route_list = self.map_route_list
 
-    -- Dijkstra initialization
     local previous  = {}
     local distances = {}
     local visited   = {}
@@ -1120,34 +1044,26 @@ function Map:calculate_path(start_id, finish_id)
             return nil
         end
 
-        if visited[current] then
-            -- already processed
-        else
+        if not visited[current] then
             visited[current] = true
 
             if current == finish_id then
-                -- Reconstruct path from finish -> start, inserting at front
-                local path = {}
-                local node = finish_id
+                local path  = {}
                 local total = 0
+                local node  = finish_id
 
-                -- If start == finish, return single-node path
-                if start_id == finish_id then
-                    path[1] = { id = start_id, distance = 0 }
-                    return path
+                while previous[node] do
+                    path[1] = { id = node, distance = total }
+                    local prev  = previous[node]
+                    local route = map_route_list[prev] and map_route_list[prev][node]
+                    if not route then return nil end
+                    total = total + route.distance
+                    node  = prev
+                    table.insert(path, 1, { id = node, distance = total })
                 end
 
-                -- Walk backwards using 'previous' and accumulate distances
-                while true do
-                    table.insert(path, 1, { id = node, distance = total })
-                    local prev = previous[node]
-                    if not prev then break end
-                    local route = map_route_list[prev] and map_route_list[prev][node]
-                    if not route then
-                        return nil
-                    end
-                    total = total + route.distance
-                    node = prev
+                if #path == 0 then
+                    path[1] = { id = node, distance = total }
                 end
 
                 return path
@@ -1171,7 +1087,6 @@ end
 function Map:fetch_path(from_id, to_id)
     local pathfinder_cache = self.pathfinder_cache
 
-    -- trivial case: same node
     if from_id == to_id then
         local ids = { from_id }
         local node_versions = { self.node_version[from_id] or 0 }
@@ -1184,7 +1099,6 @@ function Map:fetch_path(from_id, to_id)
         }
     end
 
-    -- try cache hit first
     local row = pathfinder_cache[from_id]
     if row then
         local cache = row[to_id]
@@ -1193,78 +1107,41 @@ function Map:fetch_path(from_id, to_id)
         end
     end
 
-    -- compute path using Dijkstra
     local path_nodes = self:calculate_path(from_id, to_id)
-    if not path_nodes or #path_nodes == 0 then
-        return nil
-    end
+    if not path_nodes or #path_nodes == 0 then return nil end
 
-    -- Build canonical id list and total distance
-    local ids = {}
-    for i = 1, #path_nodes do
-        ids[i] = path_nodes[i].id
-    end
-    local total_distance = path_nodes[#path_nodes].distance or 0
+    local route = {}
+    for index = #path_nodes, 1, -1 do
+        local node = path_nodes[index]
+        if node.distance ~= 0 then
+            local cache_row = pathfinder_cache[node.id]
+            if not cache_row then
+                cache_row = {}
+                pathfinder_cache[node.id] = cache_row
+            end
 
-    -- Ensure cache table for the start node exists
-    pathfinder_cache[from_id] = pathfinder_cache[from_id] or {}
-    -- Create cache entry for the full path (from_id -> to_id)
-    local node_versions = {}
-    local route_versions = {}
+            local node_ids = copy_table(route)
+            local node_versions = {}
+            local route_versions = {}
 
-    for i = 1, #ids do
-        node_versions[i] = self.node_version[ids[i]] or 0
-    end
-    for i = 1, #ids - 1 do
-        local a = ids[i]
-        local b = ids[i + 1]
-        local rv_row = self.route_version[a]
-        route_versions[i] = rv_row and rv_row[b] or 0
-    end
+            for i = 1, #node_ids do
+                node_versions[i] = self.node_version[node_ids[i]] or 0
+            end
+            for i = 1, #node_ids - 1 do
+                local a = node_ids[i]
+                local b = node_ids[i + 1]
+                local rv_row = self.route_version[a]
+                route_versions[i] = rv_row and rv_row[b] or 0
+            end
 
-    pathfinder_cache[from_id][to_id] = {
-        distance       = total_distance,
-        path           = copy_table(ids),
-        node_versions  = node_versions,
-        route_versions = route_versions,
-    }
-
-    -- Also populate suffix caches: for each node in the path (except the last),
-    -- create a cache entry mapping that node -> to_id for the suffix path.
-    -- This mirrors the original intent but does so with explicit distances and arrays.
-    for start_index = 1, #ids - 1 do
-        local start_node = ids[start_index]
-        local suffix_ids = {}
-        for j = start_index, #ids do
-            suffix_ids[#suffix_ids + 1] = ids[j]
+            cache_row[to_id] = {
+                distance       = node.distance,
+                path           = node_ids,
+                node_versions  = node_versions,
+                route_versions = route_versions,
+            }
         end
-
-        -- distance from this start_node to the final to_id
-        local dist_from_start = total_distance - (path_nodes[start_index].distance or 0)
-
-        -- build versions for suffix
-        local suffix_node_versions = {}
-        local suffix_route_versions = {}
-        for k = 1, #suffix_ids do
-            suffix_node_versions[k] = self.node_version[suffix_ids[k]] or 0
-        end
-        for k = 1, #suffix_ids - 1 do
-            local a = suffix_ids[k]
-            local b = suffix_ids[k + 1]
-            local rv_row = self.route_version[a]
-            suffix_route_versions[k] = rv_row and rv_row[b] or 0
-        end
-
-        -- ensure cache row exists for this start node
-        pathfinder_cache[start_node] = pathfinder_cache[start_node] or {}
-
-        -- store suffix cache (overwrite existing; it's consistent with current map state)
-        pathfinder_cache[start_node][to_id] = {
-            distance       = dist_from_start,
-            path           = copy_table(suffix_ids),
-            node_versions  = suffix_node_versions,
-            route_versions = suffix_route_versions,
-        }
+        table.insert(route, 1, node.id)
     end
 
     return pathfinder_cache[from_id][to_id]
@@ -1322,6 +1199,7 @@ end
 ----------------------------------------------------------------------
 -- Movement initialization
 ----------------------------------------------------------------------
+
 function Map:move_internal_initialize(source_position, move_data)
     local near_result = self:calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
@@ -1333,9 +1211,9 @@ function Map:move_internal_initialize(source_position, move_data)
         return move_data
     end
 
+    local from_path, to_path
     local map_route_list = self.map_route_list
 
-    local from_path, to_path
     if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
         from_path = self:fetch_path(near_result.route_from_id,
                                     move_data.destination_list[move_data.destination_index])
@@ -1345,24 +1223,19 @@ function Map:move_internal_initialize(source_position, move_data)
                                   move_data.destination_list[move_data.destination_index])
     end
 
-    -- Build position list and corresponding node id list (1:1 for node positions)
     local position_list = {}
     local node_ids_list = {}
 
-    -- Start with the source position (projection / actual)
     position_list[1] = source_position
     local pos_count = 1
 
-    -- If far from route and allowed, add projection point on route
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
-        -- projection point is not a map node, so do NOT add a node id for it
     end
 
     local map_node_list = self.map_node_list
 
-    -- If we have either path, choose the shorter (via from_path or to_path)
     if from_path or to_path then
         local from_distance = huge
         local to_distance   = huge
@@ -1377,8 +1250,7 @@ function Map:move_internal_initialize(source_position, move_data)
             to_distance = to_path.distance + distance(source_position, to_node_pos)
         end
 
-        if from_distance <= to_distance and from_path then
-            -- Enter via the 'from' node and append its node id
+        if from_distance <= to_distance then
             pos_count = pos_count + 1
             position_list[pos_count] = from_node_pos
             node_ids_list[#node_ids_list + 1] = near_result.route_from_id
@@ -1389,8 +1261,7 @@ function Map:move_internal_initialize(source_position, move_data)
                 position_list[pos_count] = map_node_list[fp[i]].position
                 node_ids_list[#node_ids_list + 1] = fp[i]
             end
-        elseif to_path then
-            -- Enter via the 'to' node and append its node id
+        else
             pos_count = pos_count + 1
             position_list[pos_count] = to_node_pos
             node_ids_list[#node_ids_list + 1] = near_result.route_to_id
@@ -1404,11 +1275,9 @@ function Map:move_internal_initialize(source_position, move_data)
         end
     end
 
-    -- Clear existing path
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
-    -- Build curved path if requested and there are enough points
     if move_data.config.path_curve_roundness ~= 0 and pos_count > 2 then
         path[1] = position_list[1]
         local path_count = 1
@@ -1443,13 +1312,11 @@ function Map:move_internal_initialize(source_position, move_data)
 
         path[#path + 1] = position_list[pos_count]
     else
-        -- No curvature: copy positions directly
         for i = 1, pos_count do
             path[i] = position_list[i]
         end
     end
 
-    -- Finalize move_data
     move_data.path_index    = 1
     move_data.path_node_ids = node_ids_list
     move_data.path_version  = self:compute_path_version(node_ids_list)
