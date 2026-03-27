@@ -5,7 +5,7 @@
 
 local M = {}
 
-math.randomseed(os.time() - os.clock() * 1000)
+math.randomseed(os.time() ~ os.clock() * 1000000)
 
 ----------------------------------------------------------------------
 -- Shared math / helpers
@@ -15,6 +15,11 @@ local sqrt  = math.sqrt
 local abs   = math.abs
 local huge  = math.huge
 local atan2 = math.atan2
+
+local function default(value, fallback)
+    if value == nil then return fallback end
+    return value
+end
 
 local function distance(source, destination)
     local dx = source.x - destination.x
@@ -241,15 +246,15 @@ function PlayerConfig.new(options)
     options = options or {}
 
     local self = {
-        gameobject_threshold = options.gameobject_threshold or PLAYER_DEFAULTS.gameobject_threshold,
-        allow_enter_on_route = options.allow_enter_on_route or PLAYER_DEFAULTS.allow_enter_on_route,
-        path_curve_tightness = options.path_curve_tightness or PLAYER_DEFAULTS.path_curve_tightness,
-        path_curve_roundness = options.path_curve_roundness or PLAYER_DEFAULTS.path_curve_roundness,
-        path_curve_max_distance_from_corner = options.path_curve_max_distance_from_corner or PLAYER_DEFAULTS.path_curve_max_distance_from_corner,
-        collision_enabled = options.collision_enabled or PLAYER_DEFAULTS.collision_enabled,
-        collision_radius  = options.collision_radius  or PLAYER_DEFAULTS.collision_radius,
-        collision_groups  = options.collision_groups  or PLAYER_DEFAULTS.collision_groups,
-        collision_behavior = options.collision_behavior or PLAYER_DEFAULTS.collision_behavior
+        gameobject_threshold = default(options.gameobject_threshold, PLAYER_DEFAULTS.gameobject_threshold),
+        allow_enter_on_route = default(options.allow_enter_on_route, PLAYER_DEFAULTS.allow_enter_on_route),
+        path_curve_tightness = default(options.path_curve_tightness, PLAYER_DEFAULTS.path_curve_tightness),
+        path_curve_roundness = default(options.path_curve_roundness, PLAYER_DEFAULTS.path_curve_roundness),
+        path_curve_max_distance_from_corner = default(options.path_curve_max_distance_from_corner, PLAYER_DEFAULTS.path_curve_max_distance_from_corner),
+        collision_enabled = default(options.collision_enabled, PLAYER_DEFAULTS.collision_enabled),
+        collision_radius  = default(options.collision_radius, PLAYER_DEFAULTS.collision_radius),
+        collision_groups  = default(options.collision_groups, PLAYER_DEFAULTS.collision_groups),
+        collision_behavior = default(options.collision_behavior, PLAYER_DEFAULTS.collision_behavior)
     }
 
     return setmetatable(self, PlayerConfig)
@@ -280,12 +285,14 @@ function PlayerConfig:validate()
     assert(type(self.collision_radius) == "number",
         "PlayerConfig: collision_radius must be a number")
 
-    assert(type(self.collision_groups) == "table",
-        "PlayerConfig: collision_groups must be a list of group names")
+    assert(self.collision_groups == nil or type(self.collision_groups) == "table",
+        "PlayerConfig: collision_groups must be nil or a list of group names")
 
-    for i, group in ipairs(self.collision_groups) do
-        assert(type(group) == "string",
-            "PlayerConfig: collision_groups must contain strings")
+    if self.collision_groups then
+        for i, group in ipairs(self.collision_groups) do
+            assert(type(group) == "string",
+                "PlayerConfig: collision_groups must contain strings")
+        end
     end
 
     assert(COLLISION_BEHAVIOR_PRESETS[self.collision_behavior],
@@ -1011,7 +1018,6 @@ end
 ----------------------------------------------------------------------
 -- Pathfinding
 ----------------------------------------------------------------------
-
 function Map:calculate_path(start_id, finish_id)
     local map_node_list  = self.map_node_list
     local map_route_list = self.map_route_list
@@ -1264,7 +1270,7 @@ function Map:move_internal_initialize(source_position, move_data)
             for i = 1, #tp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[tp[i]].position
-                node_ids_list[#node_ids_list + 1] = fp and fp[i] or tp[i]
+                node_ids_list[#node_ids_list + 1] = tp[i]
             end
         end
     end
@@ -1851,10 +1857,10 @@ end
 ----------------------------------------------------------------------
 
 function Map:debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
-    debug_node_color          = node_color or debug_node_color
-    debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
-    debug_one_way_route_color = one_way_route_color or debug_one_way_route_color
-    debug_draw_scale          = draw_scale or debug_draw_scale
+    debug_node_color          = default(node_color, debug_node_color)
+    debug_two_way_route_color = default(two_way_route_color, debug_two_way_route_color)
+    debug_one_way_route_color = default(one_way_route_color, debug_one_way_route_color)
+    debug_draw_scale          = default(draw_scale, debug_draw_scale)
 end
 
 function Map:debug_draw_map_nodes(is_show_ids)
@@ -2288,7 +2294,7 @@ function Map:create_player(key, groups, initial_position,
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
-    route_type = route_type or M.ROUTETYPE.ONETIME
+    route_type = default(route_type, M.ROUTETYPE.ONETIME)
 
     -- If config is omitted or nil, create a default one
     if type(config) ~= "table" or getmetatable(config) ~= PlayerConfig then
