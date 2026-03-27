@@ -720,71 +720,110 @@ local function map_add_oneway_route(map, source_id, destination_id, route_info)
     local map_node_list  = map.map_node_list
     local map_route_list = map.map_route_list
 
+    -- Ensure source/destination nodes exist
+    assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
+    assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
+
+    -- Ensure routes_from table exists
     local routes_from = map_route_list[source_id]
     if not routes_from then
         routes_from = {}
         map_route_list[source_id] = routes_from
     end
 
-    if not routes_from[destination_id] then
-        if not route_info then
-            local from_pos = map_node_list[source_id].position
-            local to_pos   = map_node_list[destination_id].position
+    -- If route already exists, return it (but still ensure neighbor lists are consistent)
+    if routes_from[destination_id] then
+        -- Make sure neighbor lists contain each other (defensive)
+        local src_neighbors = map_node_list[source_id].neighbor_id
+        local dst_neighbors = map_node_list[destination_id].neighbor_id
 
-            local a, b, c
-            if from_pos.x ~= to_pos.x then
-                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
-                b = 1
-                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
-            else
-                a = 1
-                b = 0
-                c = -from_pos.x
-            end
-
-            local ab_len2    = a * a + b * b
-            local inv_ab_len = 1 / sqrt(ab_len2)
-
-            routes_from[destination_id] = {
-                a          = a,
-                b          = b,
-                c          = c,
-                distance   = distance(from_pos, to_pos),
-                ab_len2    = ab_len2,
-                inv_ab_len = inv_ab_len,
-            }
-        else
-            routes_from[destination_id] = route_info
-        end
-
-        if not route_info then
-            local src_neighbors = map_node_list[source_id].neighbor_id
-            local dst_neighbors = map_node_list[destination_id].neighbor_id
-
-            local found = false
-            for i = 1, #src_neighbors do
-                if src_neighbors[i] == destination_id then
-                    found = true
-                    break
-                end
-            end
-            if not found then
-                src_neighbors[#src_neighbors + 1] = destination_id
-            end
-
-            found = false
-            for i = 1, #dst_neighbors do
-                if dst_neighbors[i] == source_id then
-                    found = true
-                    break
-                end
-            end
-            if not found then
-                dst_neighbors[#dst_neighbors + 1] = source_id
+        local found = false
+        for i = 1, #src_neighbors do
+            if src_neighbors[i] == destination_id then
+                found = true
+                break
             end
         end
+        if not found then src_neighbors[#src_neighbors + 1] = destination_id end
+
+        found = false
+        for i = 1, #dst_neighbors do
+            if dst_neighbors[i] == source_id then
+                found = true
+                break
+            end
+        end
+        if not found then dst_neighbors[#dst_neighbors + 1] = source_id end
+
+        map:bump_route_version(source_id, destination_id)
+        return routes_from[destination_id]
     end
 
+    -- Compute route_info if not provided
+    if not route_info then
+        local from_pos = map_node_list[source_id].position
+        local to_pos   = map_node_list[destination_id].position
+
+        local a, b, c
+
+        -- Handle vertical line separately to avoid division by zero
+        if from_pos.x ~= to_pos.x then
+            a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+            b = 1
+            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+        else
+            -- vertical line: x = const -> represent as a=1, b=0, c=-x
+            a = 1
+            b = 0
+            c = -from_pos.x
+        end
+
+        local ab_len2 = a * a + b * b
+        -- Defensive guard: if ab_len2 is zero (degenerate), fall back to unit vector along x
+        if ab_len2 == 0 then
+            a = 0
+            b = 1
+            ab_len2 = 1
+        end
+
+        local inv_ab_len = 1 / sqrt(ab_len2)
+
+        route_info = {
+            a          = a,
+            b          = b,
+            c          = c,
+            distance   = distance(from_pos, to_pos),
+            ab_len2    = ab_len2,
+            inv_ab_len = inv_ab_len,
+        }
+    end
+
+    -- Store route
+    routes_from[destination_id] = route_info
+
+    -- Ensure neighbor lists are updated so the graph topology remains consistent
+    local src_neighbors = map_node_list[source_id].neighbor_id
+    local dst_neighbors = map_node_list[destination_id].neighbor_id
+
+    local found = false
+    for i = 1, #src_neighbors do
+        if src_neighbors[i] == destination_id then
+            found = true
+            break
+        end
+    end
+    if not found then src_neighbors[#src_neighbors + 1] = destination_id end
+
+    found = false
+    for i = 1, #dst_neighbors do
+        if dst_neighbors[i] == source_id then
+            found = true
+            break
+        end
+    end
+    if not found then dst_neighbors[#dst_neighbors + 1] = source_id end
+
+    -- Bump route version and return the stored route
     map:bump_route_version(source_id, destination_id)
     return routes_from[destination_id]
 end
