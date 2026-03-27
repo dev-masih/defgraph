@@ -15,12 +15,12 @@ function init(self)
 
 	-- initializing defgraph player with face direction
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
-										 {},
-										 config,
-										 go.get_position(),
-										 { 36, 1 },
-										 defgraph.ROUTETYPE.CYCLE,
-										vmath.vector3(0, 1, 0))
+										{},
+										go.get_position(),
+										{ 36, 1 },
+										defgraph.ROUTETYPE.CYCLE,
+										vmath.vector3(0, 1, 0),
+										config)
 end
 
 function update(self, dt)

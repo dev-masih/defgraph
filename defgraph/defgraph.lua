@@ -120,6 +120,37 @@ function PlayerConfig.new(options)
     return setmetatable(self, PlayerConfig)
 end
 
+function PlayerConfig:validate()
+    -- Validate numeric fields
+    assert(type(self.gameobject_threshold) == "number",
+        "PlayerConfig: gameobject_threshold must be a number")
+
+    assert(type(self.path_curve_tightness) == "number",
+        "PlayerConfig: path_curve_tightness must be a number")
+
+    assert(type(self.path_curve_roundness) == "number",
+        "PlayerConfig: path_curve_roundness must be a number")
+
+    assert(type(self.path_curve_max_distance_from_corner) == "number",
+        "PlayerConfig: path_curve_max_distance_from_corner must be a number")
+
+    -- Validate boolean fields
+    assert(type(self.allow_enter_on_route) == "boolean",
+        "PlayerConfig: allow_enter_on_route must be a boolean")
+
+    -- Optional: enforce ranges
+    assert(self.path_curve_tightness >= 0,
+        "PlayerConfig: path_curve_tightness must be >= 0")
+
+    assert(self.path_curve_roundness >= 0,
+        "PlayerConfig: path_curve_roundness must be >= 0")
+
+    assert(self.path_curve_max_distance_from_corner >= 0,
+        "PlayerConfig: path_curve_max_distance_from_corner must be >= 0")
+
+    return true
+end
+
 -- debug drawing defaults (shared)
 local debug_node_color          = vmath.vector4(1, 0, 1, 1)
 local debug_two_way_route_color = vmath.vector4(0, 1, 0, 1)
@@ -1607,16 +1638,24 @@ end
 -- Player creation (Map method)
 ----------------------------------------------------------------------
 
-function Map:create_player(key, groups, config, initial_position,
+function Map:create_player(key, groups, initial_position,
                            destination_list,
                            route_type,
-                           initial_face_vector)
+                           initial_face_vector,
+                           config)
     assert(key, "Player key required")
     assert(not self.players[key], "Player with this key already exists")
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
     route_type = route_type or M.ROUTETYPE.ONETIME
+
+    -- If config is omitted or nil, create a default one
+    if type(config) ~= "table" or getmetatable(config) ~= PlayerConfig then
+        config = PlayerConfig.new()
+    end
+
+    config:validate()
 
     local destination_id = 1
     local dest_count     = #destination_list

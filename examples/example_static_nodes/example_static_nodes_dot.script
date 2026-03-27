@@ -15,11 +15,12 @@ function init(self)
 
 	-- initializing defgraph player
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
-										 {},
-										 config,
-										 go.get_position(),
-										 { 6, 18, 14, 2, 4, 10 },
-										 defgraph.ROUTETYPE.SHUFFLE)
+										{},
+										go.get_position(),
+										{ 6, 18, 14, 2, 4, 10 },
+										defgraph.ROUTETYPE.SHUFFLE,
+										nil,
+										config)
 end
 
 function update(self, dt)
