@@ -5,7 +5,7 @@
 
 local M = {}
 
-math.randomseed(os.time() ~ os.clock() * 1000000)
+math.randomseed(os.time() + math.floor((os.clock() * 1000000) % 2147483647))
 
 ----------------------------------------------------------------------
 -- Shared math / helpers
@@ -973,7 +973,6 @@ end
 ----------------------------------------------------------------------
 -- Nearest route
 ----------------------------------------------------------------------
-
 function Map:calculate_to_nearest_route(position)
     local map_node_list  = self.map_node_list
     local map_route_list = self.map_route_list
@@ -994,11 +993,32 @@ function Map:calculate_to_nearest_route(position)
                 local near_x, near_y
                 local is_between
 
-                if from_pos.x ~= to_pos.x then
-                    local ab_len2 = route.ab_len2 or (route.a * route.a + route.b * route.b)
+                -- Ensure route has ab_len2 and inv_ab_len computed
+                local ab_len2 = route.ab_len2
+                local inv_ab_len = route.inv_ab_len
+                if not ab_len2 or not inv_ab_len then
+                    if not route.a or not route.b or not route.c then
+                        if from_pos.x ~= to_pos.x then
+                            route.a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+                            route.b = 1
+                            route.c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+                        else
+                            route.a = 1
+                            route.b = 0
+                            route.c = -from_pos.x
+                        end
+                    end
+                    ab_len2 = route.a * route.a + route.b * route.b
+                    if ab_len2 == 0 then
+                        ab_len2 = 1
+                    end
+                    inv_ab_len = 1 / sqrt(ab_len2)
                     route.ab_len2 = ab_len2
-                    local bx_ax   = (route.b * position.x) - (route.a * position.y)
+                    route.inv_ab_len = inv_ab_len
+                end
 
+                if from_pos.x ~= to_pos.x then
+                    local bx_ax = (route.b * position.x) - (route.a * position.y)
                     near_x = (route.b * bx_ax - route.a * route.c) / ab_len2
                     near_y = (route.a * (-route.b * position.x + route.a * position.y) - route.b * route.c) / ab_len2
                 else
@@ -1022,18 +1042,15 @@ function Map:calculate_to_nearest_route(position)
 
                 local dist
                 if is_between then
-                    local inv_len = route.inv_ab_len
-                    if not inv_len then
-                        local ab_len2 = route.ab_len2 or (route.a * route.a + route.b * route.b)
-                        inv_len = 1 / sqrt(ab_len2)
-                        route.ab_len2    = ab_len2
-                        route.inv_ab_len = inv_len
-                    end
-                    dist = abs(route.a * position.x + route.b * position.y + route.c) * inv_len
+                    dist = abs(route.a * position.x + route.b * position.y + route.c) * inv_ab_len
                 else
                     local d1 = distance(position, from_pos)
                     local d2 = distance(position, to_pos)
-                    dist = (d1 < d2) and d1 or d2
+                    if d1 < d2 then
+                        dist = d1
+                    else
+                        dist = d2
+                    end
                 end
 
                 if dist < min_dist then
@@ -1041,7 +1058,9 @@ function Map:calculate_to_nearest_route(position)
                     if is_between then
                         min_x, min_y = near_x, near_y
                     else
-                        if distance(position, from_pos) < distance(position, to_pos) then
+                        local d1 = distance(position, from_pos)
+                        local d2 = distance(position, to_pos)
+                        if d1 < d2 then
                             min_x, min_y = from_pos.x, from_pos.y
                         else
                             min_x, min_y = to_pos.x, to_pos.y
