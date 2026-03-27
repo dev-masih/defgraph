@@ -1152,6 +1152,7 @@ end
 function Map:fetch_path(from_id, to_id)
     local pathfinder_cache = self.pathfinder_cache
 
+    -- trivial case: same node
     if from_id == to_id then
         local ids = { from_id }
         local node_versions = { self.node_version[from_id] or 0 }
@@ -1164,6 +1165,7 @@ function Map:fetch_path(from_id, to_id)
         }
     end
 
+    -- try cache hit first
     local row = pathfinder_cache[from_id]
     if row then
         local cache = row[to_id]
@@ -1172,41 +1174,78 @@ function Map:fetch_path(from_id, to_id)
         end
     end
 
+    -- compute path using Dijkstra
     local path_nodes = self:calculate_path(from_id, to_id)
-    if not path_nodes or #path_nodes == 0 then return nil end
+    if not path_nodes or #path_nodes == 0 then
+        return nil
+    end
 
-    local route = {}
-    for index = #path_nodes, 1, -1 do
-        local node = path_nodes[index]
-        if node.distance ~= 0 then
-            local cache_row = pathfinder_cache[node.id]
-            if not cache_row then
-                cache_row = {}
-                pathfinder_cache[node.id] = cache_row
-            end
+    -- Build canonical id list and total distance
+    local ids = {}
+    for i = 1, #path_nodes do
+        ids[i] = path_nodes[i].id
+    end
+    local total_distance = path_nodes[#path_nodes].distance or 0
 
-            local node_ids = copy_table(route)
-            local node_versions = {}
-            local route_versions = {}
+    -- Ensure cache table for the start node exists
+    pathfinder_cache[from_id] = pathfinder_cache[from_id] or {}
+    -- Create cache entry for the full path (from_id -> to_id)
+    local node_versions = {}
+    local route_versions = {}
 
-            for i = 1, #node_ids do
-                node_versions[i] = self.node_version[node_ids[i]] or 0
-            end
-            for i = 1, #node_ids - 1 do
-                local a = node_ids[i]
-                local b = node_ids[i + 1]
-                local rv_row = self.route_version[a]
-                route_versions[i] = rv_row and rv_row[b] or 0
-            end
+    for i = 1, #ids do
+        node_versions[i] = self.node_version[ids[i]] or 0
+    end
+    for i = 1, #ids - 1 do
+        local a = ids[i]
+        local b = ids[i + 1]
+        local rv_row = self.route_version[a]
+        route_versions[i] = rv_row and rv_row[b] or 0
+    end
 
-            cache_row[to_id] = {
-                distance       = node.distance,
-                path           = node_ids,
-                node_versions  = node_versions,
-                route_versions = route_versions,
-            }
+    pathfinder_cache[from_id][to_id] = {
+        distance       = total_distance,
+        path           = copy_table(ids),
+        node_versions  = node_versions,
+        route_versions = route_versions,
+    }
+
+    -- Also populate suffix caches: for each node in the path (except the last),
+    -- create a cache entry mapping that node -> to_id for the suffix path.
+    -- This mirrors the original intent but does so with explicit distances and arrays.
+    for start_index = 1, #ids - 1 do
+        local start_node = ids[start_index]
+        local suffix_ids = {}
+        for j = start_index, #ids do
+            suffix_ids[#suffix_ids + 1] = ids[j]
         end
-        table.insert(route, 1, node.id)
+
+        -- distance from this start_node to the final to_id
+        local dist_from_start = total_distance - (path_nodes[start_index].distance or 0)
+
+        -- build versions for suffix
+        local suffix_node_versions = {}
+        local suffix_route_versions = {}
+        for k = 1, #suffix_ids do
+            suffix_node_versions[k] = self.node_version[suffix_ids[k]] or 0
+        end
+        for k = 1, #suffix_ids - 1 do
+            local a = suffix_ids[k]
+            local b = suffix_ids[k + 1]
+            local rv_row = self.route_version[a]
+            suffix_route_versions[k] = rv_row and rv_row[b] or 0
+        end
+
+        -- ensure cache row exists for this start node
+        pathfinder_cache[start_node] = pathfinder_cache[start_node] or {}
+
+        -- store suffix cache (overwrite existing; it's consistent with current map state)
+        pathfinder_cache[start_node][to_id] = {
+            distance       = dist_from_start,
+            path           = copy_table(suffix_ids),
+            node_versions  = suffix_node_versions,
+            route_versions = suffix_route_versions,
+        }
     end
 
     return pathfinder_cache[from_id][to_id]
