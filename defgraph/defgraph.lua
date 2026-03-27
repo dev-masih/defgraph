@@ -1022,6 +1022,7 @@ function Map:calculate_path(start_id, finish_id)
     local map_node_list  = self.map_node_list
     local map_route_list = self.map_route_list
 
+    -- Dijkstra initialization
     local previous  = {}
     local distances = {}
     local visited   = {}
@@ -1044,26 +1045,34 @@ function Map:calculate_path(start_id, finish_id)
             return nil
         end
 
-        if not visited[current] then
+        if visited[current] then
+            -- already processed
+        else
             visited[current] = true
 
             if current == finish_id then
-                local path  = {}
+                -- Reconstruct path from finish -> start, inserting at front
+                local path = {}
+                local node = finish_id
                 local total = 0
-                local node  = finish_id
 
-                while previous[node] do
-                    path[1] = { id = node, distance = total }
-                    local prev  = previous[node]
-                    local route = map_route_list[prev] and map_route_list[prev][node]
-                    if not route then return nil end
-                    total = total + route.distance
-                    node  = prev
-                    table.insert(path, 1, { id = node, distance = total })
+                -- If start == finish, return single-node path
+                if start_id == finish_id then
+                    path[1] = { id = start_id, distance = 0 }
+                    return path
                 end
 
-                if #path == 0 then
-                    path[1] = { id = node, distance = total }
+                -- Walk backwards using 'previous' and accumulate distances
+                while true do
+                    table.insert(path, 1, { id = node, distance = total })
+                    local prev = previous[node]
+                    if not prev then break end
+                    local route = map_route_list[prev] and map_route_list[prev][node]
+                    if not route then
+                        return nil
+                    end
+                    total = total + route.distance
+                    node = prev
                 end
 
                 return path

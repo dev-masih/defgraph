@@ -1,0 +1,249 @@
+----------------------------------------------------------------------
+-- Debug: map nodes
+----------------------------------------------------------------------
+
+function Map:debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
+    debug_node_color          = node_color or debug_node_color
+    debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
+    debug_one_way_route_color = one_way_route_color or debug_one_way_route_color
+    debug_draw_scale          = draw_scale or debug_draw_scale
+end
+
+function Map:debug_draw_map_nodes(is_show_ids)
+    local s = debug_draw_scale
+
+    local up     = vmath.vector3(0,  s, 0)
+    local down   = vmath.vector3(0, -s, 0)
+    local left   = vmath.vector3(-s, 0, 0)
+    local right  = vmath.vector3( s, 0, 0)
+    local diag   = vmath.vector3( s,  s, 0)
+    local ndiag  = vmath.vector3(-s, -s, 0)
+
+    for node_id, node in pairs(self.map_node_list) do
+        local p = node.position
+
+        if is_show_ids then
+            msg.post("@render:", "draw_text", {
+                text = tostring(node_id),
+                position = p + diag
+            })
+        end
+
+        if node.type == NODETYPE.SINGLE then
+            msg.post("@render:", "draw_line", { start_point = p + up,    end_point = p + left,  color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + left,  end_point = p + right, color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + right, end_point = p + up,    color = debug_node_color })
+
+        elseif node.type == NODETYPE.DEADEND then
+            msg.post("@render:", "draw_line", { start_point = p + diag,  end_point = p + ndiag, color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + vmath.vector3(-s, s, 0), end_point = p + vmath.vector3(s, -s, 0), color = debug_node_color })
+
+        elseif node.type == NODETYPE.INTERSECTION then
+            msg.post("@render:", "draw_line", { start_point = p + left + up,    end_point = p + right + up,    color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + right + up,   end_point = p + right + down,  color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + right + down, end_point = p + left + down,   color = debug_node_color })
+            msg.post("@render:", "draw_line", { start_point = p + left + down,  end_point = p + left + up,     color = debug_node_color })
+        end
+    end
+end
+
+function Map:debug_draw_map_routes()
+    local arrow = 6
+    local a1 = vmath.vector3( arrow,  arrow, 0)
+    local a2 = vmath.vector3( arrow, -arrow, 0)
+    local a3 = vmath.vector3(-arrow,  arrow, 0)
+    local a4 = vmath.vector3(-arrow, -arrow, 0)
+
+    local map_node_list  = self.map_node_list
+    local map_route_list = self.map_route_list
+
+    for from_id, routes in pairs(map_route_list) do
+        local p1 = map_node_list[from_id].position
+
+        for to_id in pairs(routes) do
+            local p2 = map_node_list[to_id].position
+
+            if map_route_list[to_id] and map_route_list[to_id][from_id] then
+                msg.post("@render:", "draw_line", {
+                    start_point = p1,
+                    end_point   = p2,
+                    color       = debug_two_way_route_color
+                })
+            else
+                msg.post("@render:", "draw_line", {
+                    start_point = p1,
+                    end_point   = p2,
+                    color       = debug_one_way_route_color
+                })
+
+                local arrow_pos = p1 * 0.2 + p2 * 0.8
+
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a1, end_point = arrow_pos + a2, color = debug_one_way_route_color })
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a3, end_point = arrow_pos + a4, color = debug_one_way_route_color })
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a3, end_point = arrow_pos + a1, color = debug_one_way_route_color })
+                msg.post("@render:", "draw_line", { start_point = arrow_pos + a4, end_point = arrow_pos + a2, color = debug_one_way_route_color })
+            end
+        end
+    end
+end
+
+
+----------------------------------------------------------------------
+-- Player class methods
+----------------------------------------------------------------------
+
+function Player:update(speed)
+    return self.map:player_update(self, speed)
+end
+
+function Player:debug_draw(color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
+    return debug_draw_player(self.map, self, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
+end
+
+function Player:is_in_group(group)
+    if not self.groups then
+        return false
+    end
+    return self.groups[group] == true
+end
+
+function Player:set_gameobject_threshold(value)
+    self.config.gameobject_threshold = value
+end
+
+function Player:set_allow_enter_on_route(value)
+    self.config.allow_enter_on_route = value
+end
+
+function Player:set_curve_tightness(v)
+    self.config.path_curve_tightness = v
+end
+
+function Player:set_curve_roundness(v)
+    self.config.path_curve_roundness = v
+end
+
+function Player:set_curve_max_distance(v)
+    self.config.path_curve_max_distance_from_corner = v
+end
+
+
+function Player:get_groups()
+    local list = {}
+    if self.groups then
+        for group in pairs(self.groups) do
+            list[#list + 1] = group
+        end
+    end
+    return list
+end
+
+function Player:add_to_group(group)
+    assert(self.map, "Player has no map assigned")
+
+    -- Already in group? Do nothing
+    if self.groups and self.groups[group] then
+        return false   -- optional: return false to indicate "no change"
+    end
+
+    self.map:add_player_to_group(self.key, group)
+    return true        -- optional: return true to indicate "added"
+end
+
+function Player:remove_from_group(group)
+    assert(self.map, "Player has no map assigned")
+    self.map:remove_player_from_group(self.key, group)
+end
+
+function Player:destroy()
+    self.map = nil
+    self.path = {}
+    self.path_node_ids = {}
+    self.current_face_vector = nil
+    self._prev_angle = nil
+    self.groups = nil
+end
+
+----------------------------------------------------------------------
+-- Player creation (Map method)
+----------------------------------------------------------------------
+
+function Map:create_player(key, groups, initial_position,
+                           destination_list,
+                           route_type,
+                           initial_face_vector,
+                           config)
+    assert(key, "Player key required")
+    assert(not self.players[key], "Player with this key already exists")
+    assert(initial_position, "You must provide initial position")
+    assert(destination_list, "You must provide a destination list")
+
+    route_type = route_type or M.ROUTETYPE.ONETIME
+
+    -- If config is omitted or nil, create a default one
+    if type(config) ~= "table" or getmetatable(config) ~= PlayerConfig then
+        config = PlayerConfig.new()
+    end
+
+    config:validate()
+
+    local destination_id = 1
+    local dest_count     = #destination_list
+    if route_type == M.ROUTETYPE.SHUFFLE and dest_count > 1 then
+        destination_id = math.random(dest_count)
+    end
+
+    local initial_angle = nil
+    if initial_face_vector then
+        initial_angle = atan2(initial_face_vector.y, initial_face_vector.x)
+    end
+
+    local move_data = {
+        map                                   = self,
+        destination_list                      = destination_list,
+        destination_index                     = destination_id,
+        route_type                            = route_type,
+        path_index                            = 0,
+        path                                  = {},
+        path_node_ids                         = {},
+        path_version                          = 0,
+ 
+        current_position                      = initial_position,
+        current_face_vector                   = initial_face_vector,
+        initial_angle                         = initial_angle,
+
+        config = config
+    }
+
+    local player = setmetatable(move_data, Player)
+
+    -- Assign unique id per map
+    self.player_id_iter = self.player_id_iter + 1
+    player.id = self.player_id_iter
+    player.key = key
+
+    -- Track by key
+    self.players[key] = player
+
+    -- Track groups
+    player.groups = {}
+
+    if groups then
+        for _, group in ipairs(groups) do
+            self:add_player_to_group(key, group)
+        end
+    end
+
+    return self:move_internal_initialize(initial_position, move_data)
+end
+
+----------------------------------------------------------------------
+-- Module exports
+----------------------------------------------------------------------
+
+M.Map      = Map
+M.Player   = Player
+M.NODETYPE = NODETYPE
+M.PlayerConfig = PlayerConfig
+
+return M

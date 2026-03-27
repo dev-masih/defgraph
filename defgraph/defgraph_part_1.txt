@@ -1,0 +1,212 @@
+local M = {}
+
+math.randomseed(os.time() - os.clock() * 1000)
+
+----------------------------------------------------------------------
+-- Shared math / helpers
+----------------------------------------------------------------------
+
+local sqrt  = math.sqrt
+local abs   = math.abs
+local huge  = math.huge
+local atan2 = math.atan2
+
+local function distance(source, destination)
+    local dx = source.x - destination.x
+    local dy = source.y - destination.y
+    return sqrt(dx * dx + dy * dy)
+end
+
+local function heap_push(heap, node_id, dist)
+    local i = #heap + 1
+    heap[i] = { id = node_id, dist = dist }
+
+    while i > 1 do
+        local p = math.floor(i / 2)
+        if heap[p].dist <= heap[i].dist then break end
+        heap[p], heap[i] = heap[i], heap[p]
+        i = p
+    end
+end
+
+local function heap_pop(heap)
+    local n = #heap
+    if n == 0 then return nil, nil end
+
+    local root = heap[1]
+    local last = heap[n]
+    heap[n] = nil
+
+    if n > 1 then
+        heap[1] = last
+        local i = 1
+        while true do
+            local l = i * 2
+            local r = l + 1
+            local smallest = i
+
+            if l <= #heap and heap[l].dist < heap[smallest].dist then
+                smallest = l
+            end
+            if r <= #heap and heap[r].dist < heap[smallest].dist then
+                smallest = r
+            end
+            if smallest == i then break end
+
+            heap[i], heap[smallest] = heap[smallest], heap[i]
+            i = smallest
+        end
+    end
+
+    return root.id, root.dist
+end
+
+local function copy_table(t)
+    local new_table = {}
+    for k, v in pairs(t) do
+        new_table[k] = v
+    end
+    return new_table
+end
+
+----------------------------------------------------------------------
+-- Constants
+----------------------------------------------------------------------
+
+local NODETYPE = {
+    SINGLE       = hash("defgraph_nodetype_single"),
+    DEADEND      = hash("defgraph_nodetype_deadend"),
+    INTERSECTION = hash("defgraph_nodetype_intersection")
+}
+
+M.ROUTETYPE = {
+    ONETIME = hash("defgraph_routetype_onetime"),
+    SHUFFLE = hash("defgraph_routetype_shuffle"),
+    CYCLE   = hash("defgraph_routetype_cycle")
+}
+
+M.CollisionBehavior = {
+    SuperCautious = hash("defgraph_collision_behavior_super_cautious"),
+    Cautious      = hash("defgraph_collision_behavior_cautious"),
+    Balanced      = hash("defgraph_collision_behavior_balanced"),
+    Reactive      = hash("defgraph_collision_behavior_reactive"),
+    SuperReactive = hash("defgraph_collision_behavior_super_reactive")
+}
+
+local COLLISION_BEHAVIOR_PRESETS = {
+    [M.CollisionBehavior.SuperCautious] = {
+        lookahead_min           = 0.40,
+        lookahead_max           = 0.80,
+        lookahead_speed_factor  = 0.035,
+
+        predictive_scale        = 0.55,
+        reactive_scale          = 0.32,
+
+        predictive_slow         = 0.95,
+        reactive_slow           = 0.85,
+
+        queue_spacing_factor    = 1.9,
+        queue_slow              = 0.97,
+
+        path_recentering        = 0.65,
+
+        dir_smoothing           = 0.32,
+        speed_smoothing         = 0.26,
+
+        -- NEW:
+        density_radius_factor   = 3.0,   -- radius * 3
+        density_slow_factor     = 0.50,  -- strong slowdown
+    },
+
+    [M.CollisionBehavior.Cautious] = {
+        lookahead_min           = 0.32,
+        lookahead_max           = 0.70,
+        lookahead_speed_factor  = 0.028,
+
+        predictive_scale        = 0.50,
+        reactive_scale          = 0.28,
+
+        predictive_slow         = 0.92,
+        reactive_slow           = 0.82,
+
+        queue_spacing_factor    = 1.7,
+        queue_slow              = 0.95,
+
+        path_recentering        = 0.55,
+
+        dir_smoothing           = 0.26,
+        speed_smoothing         = 0.22,
+
+        density_radius_factor   = 2.8,
+        density_slow_factor     = 0.40,
+    },
+
+    [M.CollisionBehavior.Balanced] = {
+        lookahead_min           = 0.25,
+        lookahead_max           = 0.60,
+        lookahead_speed_factor  = 0.02,
+
+        predictive_scale        = 0.45,
+        reactive_scale          = 0.25,
+
+        predictive_slow         = 0.90,
+        reactive_slow           = 0.80,
+
+        queue_spacing_factor    = 1.5,
+        queue_slow              = 0.95,
+
+        path_recentering        = 0.50,
+
+        dir_smoothing           = 0.22,
+        speed_smoothing         = 0.18,
+
+        density_radius_factor   = 2.5,
+        density_slow_factor     = 0.30,
+    },
+
+    [M.CollisionBehavior.Reactive] = {
+        lookahead_min           = 0.20,
+        lookahead_max           = 0.50,
+        lookahead_speed_factor  = 0.015,
+
+        predictive_scale        = 0.40,
+        reactive_scale          = 0.30,
+
+        predictive_slow         = 0.85,
+        reactive_slow           = 0.75,
+
+        queue_spacing_factor    = 1.3,
+        queue_slow              = 0.90,
+
+        path_recentering        = 0.40,
+
+        dir_smoothing           = 0.18,
+        speed_smoothing         = 0.14,
+
+        density_radius_factor   = 2.2,
+        density_slow_factor     = 0.20,
+    },
+
+    [M.CollisionBehavior.SuperReactive] = {
+        lookahead_min           = 0.15,
+        lookahead_max           = 0.40,
+        lookahead_speed_factor  = 0.01,
+
+        predictive_scale        = 0.35,
+        reactive_scale          = 0.35,
+
+        predictive_slow         = 0.80,
+        reactive_slow           = 0.70,
+
+        queue_spacing_factor    = 1.2,
+        queue_slow              = 0.85,
+
+        path_recentering        = 0.30,
+
+        dir_smoothing           = 0.12,
+        speed_smoothing         = 0.10,
+
+        density_radius_factor   = 2.0,
+        density_slow_factor     = 0.10,  -- barely slows down
+    },
+}

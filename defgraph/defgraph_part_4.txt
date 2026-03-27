@@ -1,0 +1,212 @@
+----------------------------------------------------------------------
+-- Map modification
+----------------------------------------------------------------------
+
+function Map:update_node_position(node_id, position)
+    assert(node_id, "You must provide a node id")
+    assert(position, "You must provide a position")
+    local map_node_list = self.map_node_list
+    assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
+
+    map_node_list[node_id].position = vmath.vector3(position.x, position.y, 0)
+    local neighbors = map_node_list[node_id].neighbor_id
+    local map_route_list = self.map_route_list
+
+    for i = 1, #neighbors do
+        local a_id = node_id
+        local b_id = neighbors[i]
+
+        for _ = 1, 2 do
+            local from_pos = map_node_list[a_id].position
+            local to_pos   = map_node_list[b_id].position
+
+            local a, b, c
+            if from_pos.x ~= to_pos.x then
+                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+                b = 1
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+            else
+                a = 1
+                b = 0
+                c = -from_pos.x
+            end
+
+            local ab_len2    = a * a + b * b
+            local inv_ab_len = 1 / sqrt(ab_len2)
+
+            local routes_from = map_route_list[a_id]
+            if routes_from and routes_from[b_id] then
+                routes_from[b_id] = {
+                    a          = a,
+                    b          = b,
+                    c          = c,
+                    distance   = distance(from_pos, to_pos),
+                    ab_len2    = ab_len2,
+                    inv_ab_len = inv_ab_len,
+                }
+                self:bump_route_version(a_id, b_id)
+            end
+
+            a_id, b_id = b_id, a_id
+        end
+    end
+
+    self:bump_node_version(node_id)
+end
+
+local function map_update_node_type(map, node_id)
+    local map_node_list = map.map_node_list
+    local neighbors = map_node_list[node_id].neighbor_id
+    local n = #neighbors
+    if n == 0 then
+        map_node_list[node_id].type = NODETYPE.SINGLE
+    elseif n == 1 then
+        map_node_list[node_id].type = NODETYPE.DEADEND
+    else
+        map_node_list[node_id].type = NODETYPE.INTERSECTION
+    end
+end
+
+local function map_add_oneway_route(map, source_id, destination_id, route_info)
+    local map_node_list  = map.map_node_list
+    local map_route_list = map.map_route_list
+
+    local routes_from = map_route_list[source_id]
+    if not routes_from then
+        routes_from = {}
+        map_route_list[source_id] = routes_from
+    end
+
+    if not routes_from[destination_id] then
+        if not route_info then
+            local from_pos = map_node_list[source_id].position
+            local to_pos   = map_node_list[destination_id].position
+
+            local a, b, c
+            if from_pos.x ~= to_pos.x then
+                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+                b = 1
+                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+            else
+                a = 1
+                b = 0
+                c = -from_pos.x
+            end
+
+            local ab_len2    = a * a + b * b
+            local inv_ab_len = 1 / sqrt(ab_len2)
+
+            routes_from[destination_id] = {
+                a          = a,
+                b          = b,
+                c          = c,
+                distance   = distance(from_pos, to_pos),
+                ab_len2    = ab_len2,
+                inv_ab_len = inv_ab_len,
+            }
+        else
+            routes_from[destination_id] = route_info
+        end
+
+        if not route_info then
+            local src_neighbors = map_node_list[source_id].neighbor_id
+            local dst_neighbors = map_node_list[destination_id].neighbor_id
+
+            local found = false
+            for i = 1, #src_neighbors do
+                if src_neighbors[i] == destination_id then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                src_neighbors[#src_neighbors + 1] = destination_id
+            end
+
+            found = false
+            for i = 1, #dst_neighbors do
+                if dst_neighbors[i] == source_id then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                dst_neighbors[#dst_neighbors + 1] = source_id
+            end
+        end
+    end
+
+    map:bump_route_version(source_id, destination_id)
+    return routes_from[destination_id]
+end
+
+local function map_remove_oneway_route(map, source_id, destination_id)
+    local map_node_list  = map.map_node_list
+    local map_route_list = map.map_route_list
+
+    local routes_from = map_route_list[source_id]
+    if not routes_from then return end
+
+    routes_from[destination_id] = nil
+    if next(routes_from) == nil then
+        map_route_list[source_id] = nil
+    end
+
+    local routes_to = map_route_list[destination_id]
+    if not (routes_to and routes_to[source_id]) then
+        local dst_neighbors = map_node_list[destination_id].neighbor_id
+        for i = 1, #dst_neighbors do
+            if dst_neighbors[i] == source_id then
+                table.remove(dst_neighbors, i)
+                break
+            end
+        end
+
+        local src_neighbors = map_node_list[source_id].neighbor_id
+        for i = 1, #src_neighbors do
+            if src_neighbors[i] == destination_id then
+                table.remove(src_neighbors, i)
+                break
+            end
+        end
+    end
+
+    map:bump_route_version(source_id, destination_id)
+end
+
+function Map:add_node(position)
+    assert(position, "You must provide a position")
+
+    self.map_node_id_iter = self.map_node_id_iter + 1
+    local node_id = self.map_node_id_iter
+
+    self.map_node_list[node_id] = {
+        position    = vmath.vector3(position.x, position.y, 0),
+        type        = NODETYPE.SINGLE,
+        neighbor_id = {},
+    }
+
+    self:bump_node_version(node_id)
+    return node_id
+end
+
+function Map:add_route(source_id, destination_id, is_one_way)
+    assert(source_id, "You must provide a source id")
+    assert(destination_id, "You must provide a destination id")
+    local map_node_list = self.map_node_list
+    assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
+    assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
+
+    if source_id == destination_id then return end
+
+    local route_info = map_add_oneway_route(self, source_id, destination_id, nil)
+    if not is_one_way then
+        map_add_oneway_route(self, destination_id, source_id, route_info)
+    end
+
+    map_update_node_type(self, source_id)
+    map_update_node_type(self, destination_id)
+
+    self:bump_node_version(source_id)
+    self:bump_node_version(destination_id)
+end
