@@ -91,14 +91,34 @@ M.ROUTETYPE = {
 }
 
 ----------------------------------------------------------------------
--- Default settings (used as template for each Map)
+-- PlayerConfig
 ----------------------------------------------------------------------
 
-local settings_main_gameobject_threshold                = 1
-local settings_main_path_curve_tightness               = 4
-local settings_main_path_curve_roundness               = 3
-local settings_main_path_curve_max_distance_from_corner = 10
-local settings_main_allow_enter_on_route               = true
+local PlayerConfig = {}
+PlayerConfig.__index = PlayerConfig
+
+local PLAYER_DEFAULTS = {
+    gameobject_threshold = 2,
+    allow_enter_on_route = true,
+
+    path_curve_tightness = 4,
+    path_curve_roundness = 3,
+    path_curve_max_distance_from_corner = 10,
+}
+
+function PlayerConfig.new(options)
+    options = options or {}
+
+    local self = {
+        gameobject_threshold = options.gameobject_threshold or PLAYER_DEFAULTS.gameobject_threshold,
+        allow_enter_on_route = options.allow_enter_on_route or PLAYER_DEFAULTS.allow_enter_on_route,
+        path_curve_tightness = options.path_curve_tightness or PLAYER_DEFAULTS.path_curve_tightness,
+        path_curve_roundness = options.path_curve_roundness or PLAYER_DEFAULTS.path_curve_roundness,
+        path_curve_max_distance_from_corner = options.path_curve_max_distance_from_corner or PLAYER_DEFAULTS.path_curve_max_distance_from_corner,
+    }
+
+    return setmetatable(self, PlayerConfig)
+end
 
 -- debug drawing defaults (shared)
 local debug_node_color          = vmath.vector4(1, 0, 1, 1)
@@ -168,7 +188,8 @@ function Map.new()
         map_node_list    = {}, -- [node_id] = { position, type, neighbor_id[] }
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len }
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] }
-        players = {}, -- player registry
+        players = {},          -- player registry
+        players_by_group = {}, -- player group → { key → player }
 
         -- versioning
         node_version   = {},   -- [node_id] = int
@@ -176,13 +197,6 @@ function Map.new()
 
         map_node_id_iter = 0,  -- node id iterator
         player_id_iter = 0,    -- player id iterator
-
-        -- per-map settings
-        settings_gameobject_threshold                = settings_main_gameobject_threshold,
-        settings_path_curve_tightness               = settings_main_path_curve_tightness,
-        settings_path_curve_roundness               = settings_main_path_curve_roundness,
-        settings_path_curve_max_distance_from_corner = settings_main_path_curve_max_distance_from_corner,
-        settings_allow_enter_on_route               = settings_main_allow_enter_on_route
     }
     return setmetatable(self, Map)
 end
@@ -195,6 +209,15 @@ function Map:remove_player(key)
     local player = self.players[key]
     if not player then return end
 
+    -- Remove from all groups
+    if player.groups then
+        for group in pairs(player.groups) do
+            local g = self.players_by_group[group]
+            if g then g[key] = nil end
+        end
+    end
+
+    -- Destroy player
     if player.destroy then
         player:destroy()
     end
@@ -202,8 +225,66 @@ function Map:remove_player(key)
     self.players[key] = nil
 end
 
+function Map:get_players_in_group(group)
+    local g = self.players_by_group[group]
+    if not g then return {} end
+
+    local list = {}
+    for key in pairs(g) do
+        list[#list + 1] = self.players[key]
+    end
+    return list
+end
+
+function Map:remove_players_in_group(group)
+    local g = self.players_by_group[group]
+    if not g then return end
+
+    for key in pairs(g) do
+        self:remove_player(key)
+    end
+
+    self.players_by_group[group] = nil
+end
+
+function Map:add_player_to_group(key, group)
+    local player = self.players[key]
+    assert(player, "Player not found: " .. tostring(key))
+
+    -- Already in group? Do nothing
+    if player.groups[group] then
+        return false
+    end
+
+    -- Create group table if missing
+    self.players_by_group[group] = self.players_by_group[group] or {}
+
+    -- Add player to group
+    self.players_by_group[group][key] = true
+    player.groups[group] = true
+
+    return true
+end
+
+function Map:remove_player_from_group(key, group)
+    local player = self.players[key]
+    if not player then return end
+
+    if player.groups[group] then
+        player.groups[group] = nil
+    end
+
+    local g = self.players_by_group[group]
+    if g then
+        g[key] = nil
+        if next(g) == nil then
+            self.players_by_group[group] = nil
+        end
+    end
+end
+
 function Map:destroy()
-    -- Destroy players
+    -- destroy players
     for key, player in pairs(self.players) do
         if player.destroy then
             player:destroy()
@@ -211,7 +292,12 @@ function Map:destroy()
         self.players[key] = nil
     end
 
-    -- Clear map internals
+    -- clear groups
+    for group, list in pairs(self.players_by_group) do
+        self.players_by_group[group] = nil
+    end
+
+    -- clear map internals
     self.map_node_list = {}
     self.map_route_list = {}
     self.pathfinder_cache = {}
@@ -219,6 +305,80 @@ function Map:destroy()
     self.route_version = {}
 
     self._destroyed = true
+end
+
+function Map:is_player_in_group(key, group)
+    local player = self.players[key]
+    if not player then
+        return false
+    end
+
+    -- player.groups is a set: { groupName = true }
+    return player.groups and player.groups[group] == true
+end
+
+function Map:_iterate_unique(groups, fn)
+    local visited = {}
+
+    for _, group in ipairs(groups) do
+        local g = self.players_by_group[group]
+        if g then
+            for key in pairs(g) do
+                if not visited[key] then
+                    visited[key] = true
+                    fn(self.players[key], key)
+                end
+            end
+        end
+    end
+end
+
+function Map:update_group(group, speed)
+    local g = self.players_by_group[group]
+    if not g then return end
+
+    for key in pairs(g) do
+        local player = self.players[key]
+        if player then
+            player:update(speed)
+        end
+    end
+end
+
+function Map:update_groups(groups, speed)
+    self:_iterate_unique(groups, function(player)
+        player:update(speed)
+    end)
+end
+
+function Map:update_all_players(speed)
+    for key, player in pairs(self.players) do
+        player:update(speed)
+    end
+end
+
+function Map:debug_draw_group(group, color, show_projection, show_dirs, show_snap)
+    local g = self.players_by_group[group]
+    if not g then return end
+
+    for key in pairs(g) do
+        local player = self.players[key]
+        if player then
+            player:debug_draw(color, show_projection, show_dirs, show_snap)
+        end
+    end
+end
+
+function Map:debug_draw_groups(groups, color, show_projection, show_dirs, show_snap)
+    self:_iterate_unique(groups, function(player)
+        player:debug_draw(color, show_projection, show_dirs, show_snap)
+    end)
+end
+
+function Map:debug_draw_all_players(color, show_projection, show_dirs, show_snap)
+    for key, player in pairs(self.players) do
+        player:debug_draw(color, show_projection, show_dirs, show_snap)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -287,27 +447,6 @@ function Map:is_path_cache_valid(cache)
     end
 
     return true
-end
-
-----------------------------------------------------------------------
--- Map settings
-----------------------------------------------------------------------
-
-function Map:set_properties(settings_gameobject_threshold,
-                            settings_path_curve_tightness,
-                            settings_path_curve_roundness,
-                            settings_path_curve_max_distance_from_corner,
-                            settings_allow_enter_on_route)
-
-    self.settings_gameobject_threshold                = settings_gameobject_threshold or self.settings_gameobject_threshold
-    self.settings_path_curve_tightness               = settings_path_curve_tightness or self.settings_path_curve_tightness
-    self.settings_path_curve_roundness               = settings_path_curve_roundness or self.settings_path_curve_roundness
-    self.settings_path_curve_max_distance_from_corner =
-        settings_path_curve_max_distance_from_corner or self.settings_path_curve_max_distance_from_corner
-
-    if settings_allow_enter_on_route ~= nil then
-        self.settings_allow_enter_on_route = settings_allow_enter_on_route
-    end
 end
 
 ----------------------------------------------------------------------
@@ -816,41 +955,41 @@ end
 ----------------------------------------------------------------------
 
 local function process_path_curvature(before, current, after, roundness,
-                                      settings_path_curve_tightness,
-                                      settings_path_curve_max_distance_from_corner,
+                                      path_curve_tightness,
+                                      path_curve_max_distance_from_corner,
                                       out_list)
     out_list = out_list or {}
 
-    local Q_before = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * before +
-                     current / settings_path_curve_tightness
-    local R_before = before / settings_path_curve_tightness +
-                     (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current
-    local Q_after  = (settings_path_curve_tightness - 1) / settings_path_curve_tightness * current +
-                     after / settings_path_curve_tightness
-    local R_after  = current / settings_path_curve_tightness +
-                     (settings_path_curve_tightness - 1) / settings_path_curve_tightness * after
+    local Q_before = (path_curve_tightness - 1) / path_curve_tightness * before +
+                     current / path_curve_tightness
+    local R_before = before / path_curve_tightness +
+                     (path_curve_tightness - 1) / path_curve_tightness * current
+    local Q_after  = (path_curve_tightness - 1) / path_curve_tightness * current +
+                     after / path_curve_tightness
+    local R_after  = current / path_curve_tightness +
+                     (path_curve_tightness - 1) / path_curve_tightness * after
 
-    if distance(Q_before, before) > settings_path_curve_max_distance_from_corner then
-        Q_before = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(before, current), before, current)
+    if distance(Q_before, before) > path_curve_max_distance_from_corner then
+        Q_before = vmath.lerp(path_curve_max_distance_from_corner / distance(before, current), before, current)
     end
-    if distance(R_before, current) > settings_path_curve_max_distance_from_corner then
-        R_before = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(before, current), current, before)
+    if distance(R_before, current) > path_curve_max_distance_from_corner then
+        R_before = vmath.lerp(path_curve_max_distance_from_corner / distance(before, current), current, before)
     end
-    if distance(Q_after, current) > settings_path_curve_max_distance_from_corner then
-        Q_after = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(current, after), current, after)
+    if distance(Q_after, current) > path_curve_max_distance_from_corner then
+        Q_after = vmath.lerp(path_curve_max_distance_from_corner / distance(current, after), current, after)
     end
-    if distance(R_after, after) > settings_path_curve_max_distance_from_corner then
-        R_after = vmath.lerp(settings_path_curve_max_distance_from_corner / distance(current, after), after, current)
+    if distance(R_after, after) > path_curve_max_distance_from_corner then
+        R_after = vmath.lerp(path_curve_max_distance_from_corner / distance(current, after), after, current)
     end
 
     if roundness ~= 1 then
         process_path_curvature(Q_before, R_before, Q_after, roundness - 1,
-                               settings_path_curve_tightness,
-                               settings_path_curve_max_distance_from_corner,
+                               path_curve_tightness,
+                               path_curve_max_distance_from_corner,
                                out_list)
         process_path_curvature(R_before, Q_after, R_after, roundness - 1,
-                               settings_path_curve_tightness,
-                               settings_path_curve_max_distance_from_corner,
+                               path_curve_tightness,
+                               path_curve_max_distance_from_corner,
                                out_list)
         return out_list, Q_before, R_after
     else
@@ -893,7 +1032,7 @@ function Map:move_internal_initialize(source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
-    if (near_result.distance > move_data.settings_gameobject_threshold + 1) and move_data.settings_allow_enter_on_route then
+    if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
     end
@@ -942,7 +1081,7 @@ function Map:move_internal_initialize(source_position, move_data)
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
-    if move_data.settings_path_curve_roundness ~= 0 and pos_count > 2 then
+    if move_data.config.path_curve_roundness ~= 0 and pos_count > 2 then
         path[1] = position_list[1]
         local path_count = 1
 
@@ -953,9 +1092,9 @@ function Map:move_internal_initialize(source_position, move_data)
 
             local partial_position_list, Q_before, R_after =
                 process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1],
-                                       move_data.settings_path_curve_roundness,
-                                       move_data.settings_path_curve_tightness,
-                                       move_data.settings_path_curve_max_distance_from_corner,
+                                       move_data.config.path_curve_roundness,
+                                       move_data.config.path_curve_tightness,
+                                       move_data.config.path_curve_max_distance_from_corner,
                                        curve_temp)
 
             if i == 2 then
@@ -1060,7 +1199,7 @@ function Map:player_update(self_player, speed)
     end
 
     -- 4. Movement loop
-    local threshold_sq = self_player.settings_gameobject_threshold_sq
+    local threshold_sq = (self_player.config.gameobject_threshold + 1) * (self_player.config.gameobject_threshold + 1)
     local last_index   = #path
     local map_node_list = self.map_node_list
 
@@ -1244,7 +1383,7 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
     local pos = go.get_position()
 
     if is_show_snap_radius then
-        local r = self_player.settings_gameobject_threshold + 1
+        local r = self_player.config.gameobject_threshold + 1
         local steps = 16
         local prev = nil
 
@@ -1354,8 +1493,9 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
         local dx = pos.x - target.x
         local dy = pos.y - target.y
         local dist_sq = dx*dx + dy*dy
+        local threshold_sq = (self_player.config.gameobject_threshold + 1) * (self_player.config.gameobject_threshold + 1)
 
-        if dist_sq > self_player.settings_gameobject_threshold_sq then
+        if dist_sq > threshold_sq then
             local result = map:calculate_to_nearest_route(pos)
             if result then
                 local proj = result.position_on_route
@@ -1399,42 +1539,84 @@ function Player:debug_draw(color, is_show_projection, is_show_directions, is_sho
     return debug_draw_player(self.map, self, color, is_show_projection, is_show_directions, is_show_snap_radius)
 end
 
+function Player:is_in_group(group)
+    if not self.groups then
+        return false
+    end
+    return self.groups[group] == true
+end
+
+function Player:set_gameobject_threshold(value)
+    self.config.gameobject_threshold = value
+end
+
+function Player:set_allow_enter_on_route(value)
+    self.config.allow_enter_on_route = value
+end
+
+function Player:set_curve_tightness(v)
+    self.config.path_curve_tightness = v
+end
+
+function Player:set_curve_roundness(v)
+    self.config.path_curve_roundness = v
+end
+
+function Player:set_curve_max_distance(v)
+    self.config.path_curve_max_distance_from_corner = v
+end
+
+
+function Player:get_groups()
+    local list = {}
+    if self.groups then
+        for group in pairs(self.groups) do
+            list[#list + 1] = group
+        end
+    end
+    return list
+end
+
+function Player:add_to_group(group)
+    assert(self.map, "Player has no map assigned")
+
+    -- Already in group? Do nothing
+    if self.groups and self.groups[group] then
+        return false   -- optional: return false to indicate "no change"
+    end
+
+    self.map:add_player_to_group(self.key, group)
+    return true        -- optional: return true to indicate "added"
+end
+
+function Player:remove_from_group(group)
+    assert(self.map, "Player has no map assigned")
+    self.map:remove_player_from_group(self.key, group)
+end
+
 function Player:destroy()
     self.map = nil
     self.path = {}
     self.path_node_ids = {}
     self.current_face_vector = nil
     self._prev_angle = nil
+    self.groups = nil
 end
 
 ----------------------------------------------------------------------
 -- Player creation (Map method)
 ----------------------------------------------------------------------
 
-function Map:create_player_with_key(key, initial_position,
+function Map:create_player(key, groups, config, initial_position,
                            destination_list,
                            route_type,
-                           initial_face_vector,
-                           settings_gameobject_threshold,
-                           settings_path_curve_tightness,
-                           settings_path_curve_roundness,
-                           settings_path_curve_max_distance_from_corner,
-                           settings_allow_enter_on_route)
+                           initial_face_vector)
     assert(key, "Player key required")
     assert(not self.players[key], "Player with this key already exists")
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
-    route_type                        = route_type or M.ROUTETYPE.ONETIME
-    settings_gameobject_threshold     = settings_gameobject_threshold or self.settings_gameobject_threshold
-    settings_path_curve_roundness     = settings_path_curve_roundness or self.settings_path_curve_roundness
-    settings_path_curve_tightness     = settings_path_curve_tightness or self.settings_path_curve_tightness
-    settings_path_curve_max_distance_from_corner =
-        settings_path_curve_max_distance_from_corner or self.settings_path_curve_max_distance_from_corner
-
-    if settings_allow_enter_on_route == nil then
-        settings_allow_enter_on_route = self.settings_allow_enter_on_route
-    end
+    route_type = route_type or M.ROUTETYPE.ONETIME
 
     local destination_id = 1
     local dest_count     = #destination_list
@@ -1447,8 +1629,6 @@ function Map:create_player_with_key(key, initial_position,
         initial_angle = atan2(initial_face_vector.y, initial_face_vector.x)
     end
 
-    local threshold_sq = (settings_gameobject_threshold + 1) * (settings_gameobject_threshold + 1)
-
     local move_data = {
         map                                   = self,
         destination_list                      = destination_list,
@@ -1458,14 +1638,11 @@ function Map:create_player_with_key(key, initial_position,
         path                                  = {},
         path_node_ids                         = {},
         path_version                          = 0,
+
         current_face_vector                   = initial_face_vector,
         initial_angle                         = initial_angle,
-        settings_gameobject_threshold         = settings_gameobject_threshold,
-        settings_gameobject_threshold_sq      = threshold_sq,
-        settings_path_curve_tightness         = settings_path_curve_tightness,
-        settings_path_curve_roundness         = settings_path_curve_roundness,
-        settings_allow_enter_on_route         = settings_allow_enter_on_route,
-        settings_path_curve_max_distance_from_corner = settings_path_curve_max_distance_from_corner,
+
+        config = config
     }
 
     local player = setmetatable(move_data, Player)
@@ -1473,7 +1650,19 @@ function Map:create_player_with_key(key, initial_position,
     -- Assign unique id per map
     self.player_id_iter = self.player_id_iter + 1
     player.id = self.player_id_iter
+    player.key = key
+
+    -- Track by key
     self.players[key] = player
+
+    -- Track groups
+    player.groups = {}
+
+    if groups then
+        for _, group in ipairs(groups) do
+            self:add_player_to_group(key, group)
+        end
+    end
 
     return self:move_internal_initialize(initial_position, move_data)
 end
@@ -1485,5 +1674,6 @@ end
 M.Map      = Map
 M.Player   = Player
 M.NODETYPE = NODETYPE
+M.PlayerConfig = PlayerConfig
 
 return M

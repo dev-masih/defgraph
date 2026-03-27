@@ -6,9 +6,6 @@ function init(self)
     
     self.map = defgraph.create_or_get_map("MyMap")
 
-    -- change map properties
-    self.map:set_properties(15, 3, 1, 100, true)
-
     self.node_ids = {}
     self.node_positions = {}
     self.node_goas_up = {}
