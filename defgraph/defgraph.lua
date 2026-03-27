@@ -1402,13 +1402,15 @@ function Map:player_update(self_player, speed)
             self_player._debug_avoid_y = 0
             self_player._debug_final_x = dir_x
             self_player._debug_final_y = dir_y
+            self_player._debug_density = 0
+
             self_player._last_dir_x    = dir_x
             self_player._last_dir_y    = dir_y
             self_player._last_speed    = speed
+
             self_player._smooth_speed  = speed
             self_player._smooth_dir_x  = dir_x
             self_player._smooth_dir_y  = dir_y
-            self_player._debug_density = 0
             return dir_x, dir_y, speed
         end
 
@@ -1434,7 +1436,7 @@ function Map:player_update(self_player, speed)
         local strongest_queueing   = 0
 
         ------------------------------------------------------------------
-        -- Lookahead (no sqrt)
+        -- Dynamic lookahead
         ------------------------------------------------------------------
         local lookahead =
             preset.lookahead_min +
@@ -1521,7 +1523,6 @@ function Map:player_update(self_player, speed)
                         strongest_reactive = overlap
                     end
 
-                    -- lateral projection
                     local rx = dx / dist
                     local ry = dy / dist
                     local lateral = rx * lx + ry * ly
@@ -1533,7 +1534,6 @@ function Map:player_update(self_player, speed)
                     avoid_x = avoid_x + lx * lateral * force
                     avoid_y = avoid_y + ly * lateral * force
 
-                    -- slowdown
                     local dot = dx * dir_x + dy * dir_y
                     if dot < 0 then
                         local factor = 1 - overlap * preset.reactive_slow
@@ -1633,11 +1633,15 @@ function Map:player_update(self_player, speed)
             end
         end
 
+        local density = 0
         if neighbor_count > 0 then
-            local density = density_sum / neighbor_count
+            density = density_sum / neighbor_count
             local density_slow = 1 - density * preset.density_slow_factor
             if density_slow < slow_factor then slow_factor = density_slow end
         end
+
+        -- ⭐ NEW: store density for debug visualization
+        self_player._debug_density = density
 
         ------------------------------------------------------------------
         -- No avoidance
