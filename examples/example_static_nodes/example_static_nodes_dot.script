@@ -15,7 +15,7 @@ function init(self)
 		collision_enabled = true,
 		collision_radius = 10,
 		collision_groups = { "myGroup" },
-		debug_collision = true
+		collision_behavior = defgraph.CollisionBehavior.Balanced
 	})
 
 	-- initializing defgraph player
