@@ -650,52 +650,69 @@ end
 ----------------------------------------------------------------------
 -- Map modification
 ----------------------------------------------------------------------
-
 function Map:update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
     local map_node_list = self.map_node_list
     assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
 
+    -- Update node position
     map_node_list[node_id].position = vmath.vector3(position.x, position.y, 0)
+
     local neighbors = map_node_list[node_id].neighbor_id
     local map_route_list = self.map_route_list
+
+    -- local helper to compute route table between two positions
+    local function compute_route(from_pos, to_pos)
+        local a, b, c
+
+        if from_pos.x ~= to_pos.x then
+            a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+            b = 1
+            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
+        else
+            a = 1
+            b = 0
+            c = -from_pos.x
+        end
+
+        local ab_len2 = a * a + b * b
+        if ab_len2 == 0 then
+            -- Degenerate fallback: unit Y axis
+            a = 0
+            b = 1
+            ab_len2 = 1
+        end
+
+        local inv_ab_len = 1 / sqrt(ab_len2)
+
+        return {
+            a          = a,
+            b          = b,
+            c          = c,
+            distance   = distance(from_pos, to_pos),
+            ab_len2    = ab_len2,
+            inv_ab_len = inv_ab_len,
+        }
+    end
 
     for i = 1, #neighbors do
         local a_id = node_id
         local b_id = neighbors[i]
 
+        -- update both directions if route entries exist
         for _ = 1, 2 do
             local from_pos = map_node_list[a_id].position
             local to_pos   = map_node_list[b_id].position
 
-            local a, b, c
-            if from_pos.x ~= to_pos.x then
-                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
-                b = 1
-                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
-            else
-                a = 1
-                b = 0
-                c = -from_pos.x
-            end
-
-            local ab_len2    = a * a + b * b
-            local inv_ab_len = 1 / sqrt(ab_len2)
-
             local routes_from = map_route_list[a_id]
             if routes_from and routes_from[b_id] then
-                routes_from[b_id] = {
-                    a          = a,
-                    b          = b,
-                    c          = c,
-                    distance   = distance(from_pos, to_pos),
-                    ab_len2    = ab_len2,
-                    inv_ab_len = inv_ab_len,
-                }
+                -- recompute route info defensively
+                routes_from[b_id] = compute_route(from_pos, to_pos)
                 self:bump_route_version(a_id, b_id)
             end
 
+            -- swap to update the opposite direction in the next iteration
             a_id, b_id = b_id, a_id
         end
     end
