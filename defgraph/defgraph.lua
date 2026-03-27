@@ -100,93 +100,99 @@ M.CollisionBehavior = {
 
 local COLLISION_BEHAVIOR_PRESETS = {
     [M.CollisionBehavior.SuperCautious] = {
-        lookahead_min = 0.35,
-        lookahead_max = 0.75,
-        lookahead_speed_factor = 0.03,
+        lookahead_min           = 0.40,
+        lookahead_max           = 0.80,
+        lookahead_speed_factor  = 0.035,
 
-        predictive_scale = 0.55,
-        reactive_scale = 0.30,
+        predictive_scale        = 0.55,
+        reactive_scale          = 0.32,
 
-        predictive_slow = 0.95,
-        reactive_slow = 0.85,
+        predictive_slow         = 0.95,
+        reactive_slow           = 0.85,
 
-        queue_spacing_factor = 1.8,
-        queue_slow = 0.97,
+        queue_spacing_factor    = 1.9,
+        queue_slow              = 0.97,
 
-        dir_smoothing = 0.30,
-        speed_smoothing = 0.25,
+        path_recentering        = 0.65,   -- strongest snap-back
+
+        dir_smoothing           = 0.32,
+        speed_smoothing         = 0.26,
     },
-
     [M.CollisionBehavior.Cautious] = {
-        lookahead_min = 0.30,
-        lookahead_max = 0.65,
-        lookahead_speed_factor = 0.025,
+        lookahead_min           = 0.32,
+        lookahead_max           = 0.70,
+        lookahead_speed_factor  = 0.028,
 
-        predictive_scale = 0.50,
-        reactive_scale = 0.28,
+        predictive_scale        = 0.50,
+        reactive_scale          = 0.28,
 
-        predictive_slow = 0.90,
-        reactive_slow = 0.82,
+        predictive_slow         = 0.92,
+        reactive_slow           = 0.82,
 
-        queue_spacing_factor = 1.6,
-        queue_slow = 0.95,
+        queue_spacing_factor    = 1.7,
+        queue_slow              = 0.95,
 
-        dir_smoothing = 0.26,
-        speed_smoothing = 0.22,
+        path_recentering        = 0.55,
+
+        dir_smoothing           = 0.26,
+        speed_smoothing         = 0.22,
     },
-
     [M.CollisionBehavior.Balanced] = {
-        lookahead_min = 0.25,
-        lookahead_max = 0.60,
-        lookahead_speed_factor = 0.02,
+        lookahead_min           = 0.25,
+        lookahead_max           = 0.60,
+        lookahead_speed_factor  = 0.02,
 
-        predictive_scale = 0.45,
-        reactive_scale = 0.25,
+        predictive_scale        = 0.45,
+        reactive_scale          = 0.25,
 
-        predictive_slow = 0.90,
-        reactive_slow = 0.80,
+        predictive_slow         = 0.90,
+        reactive_slow           = 0.80,
 
-        queue_spacing_factor = 1.5,
-        queue_slow = 0.95,
+        queue_spacing_factor    = 1.5,
+        queue_slow              = 0.95,
 
-        dir_smoothing = 0.22,
-        speed_smoothing = 0.18,
+        path_recentering        = 0.50,
+
+        dir_smoothing           = 0.22,
+        speed_smoothing         = 0.18,
     },
-
     [M.CollisionBehavior.Reactive] = {
-        lookahead_min = 0.20,
-        lookahead_max = 0.50,
-        lookahead_speed_factor = 0.015,
+        lookahead_min           = 0.20,
+        lookahead_max           = 0.50,
+        lookahead_speed_factor  = 0.015,
 
-        predictive_scale = 0.40,
-        reactive_scale = 0.30,
+        predictive_scale        = 0.40,
+        reactive_scale          = 0.30,
 
-        predictive_slow = 0.85,
-        reactive_slow = 0.75,
+        predictive_slow         = 0.85,
+        reactive_slow           = 0.75,
 
-        queue_spacing_factor = 1.3,
-        queue_slow = 0.90,
+        queue_spacing_factor    = 1.3,
+        queue_slow              = 0.90,
 
-        dir_smoothing = 0.18,
-        speed_smoothing = 0.14,
+        path_recentering        = 0.40,
+
+        dir_smoothing           = 0.18,
+        speed_smoothing         = 0.14,
     },
-
     [M.CollisionBehavior.SuperReactive] = {
-        lookahead_min = 0.15,
-        lookahead_max = 0.40,
-        lookahead_speed_factor = 0.01,
+        lookahead_min           = 0.15,
+        lookahead_max           = 0.40,
+        lookahead_speed_factor  = 0.01,
 
-        predictive_scale = 0.35,
-        reactive_scale = 0.35,
+        predictive_scale        = 0.35,
+        reactive_scale          = 0.35,
 
-        predictive_slow = 0.80,
-        reactive_slow = 0.70,
+        predictive_slow         = 0.80,
+        reactive_slow           = 0.70,
 
-        queue_spacing_factor = 1.2,
-        queue_slow = 0.85,
+        queue_spacing_factor    = 1.2,
+        queue_slow              = 0.85,
 
-        dir_smoothing = 0.12,
-        speed_smoothing = 0.10,
+        path_recentering        = 0.30,   -- least snap-back
+
+        dir_smoothing           = 0.12,
+        speed_smoothing         = 0.10,
     },
 }
 
@@ -1401,7 +1407,7 @@ function Map:player_update(self_player, speed)
         local strongest_queueing   = 0
 
         ------------------------------------------------------------------
-        -- Dynamic lookahead from preset
+        -- Dynamic lookahead
         ------------------------------------------------------------------
         local lookahead =
             preset.lookahead_min +
@@ -1414,7 +1420,7 @@ function Map:player_update(self_player, speed)
         local future_py = py + dir_y * speed * lookahead
 
         ------------------------------------------------------------------
-        -- Build candidate list (array-style collision_groups)
+        -- Build candidate list
         ------------------------------------------------------------------
         local candidates = {}
         if cfg.collision_groups then
@@ -1433,7 +1439,7 @@ function Map:player_update(self_player, speed)
         end
 
         ------------------------------------------------------------------
-        -- Helper: lateral force (reactive or predictive)
+        -- Helper: lateral force
         ------------------------------------------------------------------
         local function apply_lateral(dx, dy, dist, overlap, scale, predictive)
             local rx = dx / dist
@@ -1494,9 +1500,7 @@ function Map:player_update(self_player, speed)
                 if dist_sq < radius_sq and dist_sq > 0 then
                     local dist    = math.sqrt(dist_sq)
                     local overlap = (radius - dist) / radius
-                    if overlap > strongest_reactive then
-                        strongest_reactive = overlap
-                    end
+                    strongest_reactive = math.max(strongest_reactive, overlap)
                     apply_lateral(dx, dy, dist, overlap, preset.reactive_scale, false)
                 end
 
@@ -1506,14 +1510,12 @@ function Map:player_update(self_player, speed)
                 if fdist_sq < radius_sq and fdist_sq > 0 then
                     local fdist    = math.sqrt(fdist_sq)
                     local foverlap = (radius - fdist) / radius
-                    if foverlap > strongest_predictive then
-                        strongest_predictive = foverlap
-                    end
+                    strongest_predictive = math.max(strongest_predictive, foverlap)
                     apply_lateral(fdx, fdy, fdist, foverlap, preset.predictive_scale, true)
                 end
 
                 ----------------------------------------------------------
-                -- 3. Longitudinal queueing (same direction)
+                -- 3. Longitudinal queueing
                 ----------------------------------------------------------
                 if other._last_dir_x and other._last_dir_y then
                     local align = dir_x * other._last_dir_x + dir_y * other._last_dir_y
@@ -1529,9 +1531,7 @@ function Map:player_update(self_player, speed)
                         if dist2_sq < desired_sq and dist2_sq > 0 then
                             local dist2    = math.sqrt(dist2_sq)
                             local overlap2 = (desired - dist2) / desired
-                            if overlap2 > strongest_queueing then
-                                strongest_queueing = overlap2
-                            end
+                            strongest_queueing = math.max(strongest_queueing, overlap2)
 
                             local factor = 1 - overlap2 * preset.queue_slow
                             if factor < slow_factor then slow_factor = factor end
@@ -1589,7 +1589,25 @@ function Map:player_update(self_player, speed)
         end
 
         ------------------------------------------------------------------
-        -- Direction smoothing (from preset)
+        -- PATH RE‑CENTERING (NEW)
+        ------------------------------------------------------------------
+        local alignment = raw_x * dir_x + raw_y * dir_y
+
+        if alignment < 0.6 then
+            local correction = (0.6 - alignment) * preset.path_recentering
+
+            raw_x = raw_x + dir_x * correction
+            raw_y = raw_y + dir_y * correction
+
+            local rlen = math.sqrt(raw_x*raw_x + raw_y*raw_y)
+            if rlen > 0 then
+                raw_x = raw_x / rlen
+                raw_y = raw_y / rlen
+            end
+        end
+
+        ------------------------------------------------------------------
+        -- Direction smoothing
         ------------------------------------------------------------------
         local dir_smoothing = preset.dir_smoothing
 
@@ -1614,7 +1632,7 @@ function Map:player_update(self_player, speed)
         end
 
         ------------------------------------------------------------------
-        -- Speed smoothing (from preset)
+        -- Speed smoothing
         ------------------------------------------------------------------
         local target_speed    = speed * slow_factor
         local speed_smoothing = preset.speed_smoothing
