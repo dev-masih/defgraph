@@ -357,21 +357,8 @@ function Map.__newindex(self, key, value)
     error('Cannot set Map.' .. tostring(key) .. ' (Map internal state is read-only)')
 end
 
--- Internal player state (private, not exposed on Player handle)
-local player_state = setmetatable({}, {__mode = 'k'})
-
-local function get_player_state(self)
-    local state = player_state[self]
-    assert(state, 'Invalid Player object')
-    return state
-end
-
 local Player   = {}
 Player.__index = Player
-
-function Player.__newindex(self, key, value)
-    error('Cannot set Player.' .. tostring(key) .. ' (Player internal state is read-only)')
-end
 
 ----------------------------------------------------------------------
 -- Map Registry
@@ -539,11 +526,9 @@ function Map:remove_player(key)
     local player = get_map_state(self).players[key]
     if not player then return end
 
-    local pst = get_player_state(player)
-
     -- Remove from all groups
-    if pst.groups then
-        for group in pairs(pst.groups) do
+    if player.groups then
+        for group in pairs(player.groups) do
             local g = get_map_state(self).players_by_group[group]
             if g then g[key] = nil end
         end
@@ -555,7 +540,6 @@ function Map:remove_player(key)
     end
 
     get_map_state(self).players[key] = nil
-    player_state[player] = nil
 end
 
 function Map:get_players_in_group(group)
@@ -584,10 +568,8 @@ function Map:add_player_to_group(key, group)
     local player = get_map_state(self).players[key]
     assert(player, "Player not found: " .. tostring(key))
 
-    local pst = get_player_state(player)
-
     -- Already in group? Do nothing
-    if pst.groups[group] then
+    if player.groups[group] then
         return false
     end
 
@@ -596,7 +578,7 @@ function Map:add_player_to_group(key, group)
 
     -- Add player to group
     get_map_state(self).players_by_group[group][key] = true
-    pst.groups[group] = true
+    player.groups[group] = true
 
     return true
 end
@@ -605,10 +587,8 @@ function Map:remove_player_from_group(key, group)
     local player = get_map_state(self).players[key]
     if not player then return end
 
-    local pst = get_player_state(player)
-
-    if pst.groups[group] then
-        pst.groups[group] = nil
+    if player.groups[group] then
+        player.groups[group] = nil
     end
 
     local g = get_map_state(self).players_by_group[group]
@@ -661,9 +641,8 @@ function Map:is_player_in_group(key, group)
         return false
     end
 
-    local pst = get_player_state(player)
     -- player.groups is a set: { groupName = true }
-    return pst.groups and pst.groups[group] == true
+    return player.groups and player.groups[group] == true
 end
 
 function Map:debug_draw_group(group, color, show_projection, show_dirs, show_snap)
@@ -1750,18 +1729,17 @@ function Map:player_update(self_player, speed)
         for i = 1, count do
             local other = candidates[i]
             if other ~= self_player then
-                local other_state = get_player_state(other)
-                local ox = other_state.current_position.x
-                local oy = other_state.current_position.y
+                local ox = other.current_position.x
+                local oy = other.current_position.y
 
                 -- predict other
                 local ofx = ox
                 local ofy = oy
 
-                local odx = other_state._last_dir_x
+                local odx = other._last_dir_x
                 if odx then
-                    local ospeed = other_state._last_speed
-                    local ody = other_state._last_dir_y
+                    local ospeed = other._last_speed
+                    local ody = other._last_dir_y
                     ofx = ox + odx * ospeed * lookahead
                     ofy = oy + ody * ospeed * lookahead
                 end
@@ -1888,9 +1866,8 @@ function Map:player_update(self_player, speed)
         for i = 1, count do
             local other = candidates[i]
             if other ~= self_player then
-                local other_state = get_player_state(other)
-                local ox = other_state.current_position.x
-                local oy = other_state.current_position.y
+                local ox = other.current_position.x
+                local oy = other.current_position.y
 
                 local dx = px - ox
                 local dy = py - oy
@@ -2512,53 +2489,45 @@ end
 ----------------------------------------------------------------------
 
 function Player:update(speed)
-    local st = get_player_state(self)
-    return st.map:player_update(st, speed)
+    return self.map:player_update(self, speed)
 end
 
 function Player:debug_draw(color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
-    local st = get_player_state(self)
-    return debug_draw_player(st.map, st, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
+    return debug_draw_player(self.map, self, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
 end
 
 function Player:is_in_group(group)
-    local st = get_player_state(self)
-    if not st.groups then
+    if not self.groups then
         return false
     end
-    return st.groups[group] == true
+    return self.groups[group] == true
 end
 
 function Player:set_gameobject_threshold(value)
-    local st = get_player_state(self)
-    st.config.gameobject_threshold = value
+    self.config.gameobject_threshold = value
 end
 
 function Player:set_allow_enter_on_route(value)
-    local st = get_player_state(self)
-    st.config.allow_enter_on_route = value
+    self.config.allow_enter_on_route = value
 end
 
 function Player:set_curve_tightness(v)
-    local st = get_player_state(self)
-    st.config.path_curve_tightness = v
+    self.config.path_curve_tightness = v
 end
 
 function Player:set_curve_roundness(v)
-    local st = get_player_state(self)
-    st.config.path_curve_roundness = v
+    self.config.path_curve_roundness = v
 end
 
 function Player:set_curve_max_distance(v)
-    local st = get_player_state(self)
-    st.config.path_curve_max_distance_from_corner = v
+    self.config.path_curve_max_distance_from_corner = v
 end
 
+
 function Player:get_groups()
-    local st = get_player_state(self)
     local list = {}
-    if st.groups then
-        for group in pairs(st.groups) do
+    if self.groups then
+        for group in pairs(self.groups) do
             list[#list + 1] = group
         end
     end
@@ -2566,42 +2535,35 @@ function Player:get_groups()
 end
 
 function Player:add_to_group(group)
-    local st = get_player_state(self)
-    assert(st.map, "Player has no map assigned")
+    assert(self.map, "Player has no map assigned")
 
     -- Already in group? Do nothing
-    if st.groups and st.groups[group] then
+    if self.groups and self.groups[group] then
         return false   -- optional: return false to indicate "no change"
     end
 
-    st.map:add_player_to_group(st.key, group)
+    self.map:add_player_to_group(self.key, group)
     return true        -- optional: return true to indicate "added"
 end
 
 function Player:remove_from_group(group)
-    local st = get_player_state(self)
-    assert(st.map, "Player has no map assigned")
-    st.map:remove_player_from_group(st.key, group)
+    assert(self.map, "Player has no map assigned")
+    self.map:remove_player_from_group(self.key, group)
 end
 
 function Player:destroy()
-    local st = get_player_state(self)
-    if st then
-        st.map = nil
-        st.path = {}
-        st.path_node_ids = {}
-        st.current_face_vector = nil
-        st._prev_angle = nil
-        st.groups = nil
+    self.map = nil
+    self.path = {}
+    self.path_node_ids = {}
+    self.current_face_vector = nil
+    self._prev_angle = nil
+    self.groups = nil
 
-        -- scratch / debug fields (safe to clear)
-        st._scratch_candidates = nil
-        st._scratch_ids        = nil
-        st._scratch_nv         = nil
-        st._scratch_rv         = nil
-
-        player_state[self] = nil
-    end
+    -- scratch / debug fields (safe to clear)
+    self._scratch_candidates = nil
+    self._scratch_ids        = nil
+    self._scratch_nv         = nil
+    self._scratch_rv         = nil
 end
 
 
@@ -2812,20 +2774,21 @@ function Map:create_player(key, groups, initial_position,
         current_face_vector                   = initial_face_vector,
         initial_angle                         = initial_angle,
 
-        config = config,
-        groups = {}
+        config = config
     }
 
-    local player = setmetatable({}, Player)
-    player_state[player] = move_data
+    local player = setmetatable(move_data, Player)
 
     -- Assign unique id per map
     get_map_state(self).player_id_iter = get_map_state(self).player_id_iter + 1
-    move_data.id = get_map_state(self).player_id_iter
-    move_data.key = key
+    player.id = get_map_state(self).player_id_iter
+    player.key = key
 
     -- Track by key
     get_map_state(self).players[key] = player
+
+    -- Track groups
+    player.groups = {}
 
     if groups then
         for _, group in ipairs(groups) do
@@ -2833,8 +2796,7 @@ function Map:create_player(key, groups, initial_position,
         end
     end
 
-    self:move_internal_initialize(initial_position, move_data)
-    return player
+    return self:move_internal_initialize(initial_position, move_data)
 end
 
 ----------------------------------------------------------------------
