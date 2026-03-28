@@ -74,6 +74,7 @@ end
 ----------------------------------------------------------------------
 -- Constants
 ----------------------------------------------------------------------
+local DEFAULT_ROUTE_LANE_OFFSET = 10
 
 local NODETYPE = {
     SINGLE       = hash("defgraph_nodetype_single"),
@@ -815,9 +816,10 @@ local function map_update_node_type(map, node_id)
     end
 end
 
-local function map_add_oneway_route(map, source_id, destination_id, route_info)
-    local map_node_list  = get_map_state(map).map_node_list
-    local map_route_list = get_map_state(map).map_route_list
+local function map_add_oneway_route(map, source_id, destination_id, route_info, lane_count, lane_offset)
+    local state         = get_map_state(map)
+    local map_node_list = state.map_node_list
+    local map_route_list = state.map_route_list
 
     local routes_from = map_route_list[source_id]
     if not routes_from then
@@ -825,67 +827,84 @@ local function map_add_oneway_route(map, source_id, destination_id, route_info)
         map_route_list[source_id] = routes_from
     end
 
-    if not routes_from[destination_id] then
-        if not route_info then
-            local from_pos = map_node_list[source_id].position
-            local to_pos   = map_node_list[destination_id].position
+    lane_count  = lane_count or 1
+    if lane_count < 1 then lane_count = 1 end
+    lane_offset = lane_offset or DEFAULT_ROUTE_LANE_OFFSET
 
-            local a, b, c
-            if from_pos.x ~= to_pos.x then
-                a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
-                b = 1
-                c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
-            else
-                a = 1
-                b = 0
-                c = -from_pos.x
-            end
+    -- If route already exists, update lane info and return
+    if routes_from[destination_id] then
+        local r = routes_from[destination_id]
+        r.lane_count  = lane_count
+        r.lane_offset = lane_offset
+        map:bump_route_version(source_id, destination_id)
+        return r
+    end
 
-            local ab_len2    = a * a + b * b
-            local inv_ab_len = 1 / sqrt(ab_len2)
+    -- Build new route info if not provided
+    if not route_info then
+        local from_pos = map_node_list[source_id].position
+        local to_pos   = map_node_list[destination_id].position
 
-            routes_from[destination_id] = {
-                a          = a,
-                b          = b,
-                c          = c,
-                distance   = distance(from_pos, to_pos),
-                ab_len2    = ab_len2,
-                inv_ab_len = inv_ab_len,
-            }
+        local a, b, c
+        if from_pos.x ~= to_pos.x then
+            a = (from_pos.y - to_pos.y) / (to_pos.x - from_pos.x)
+            b = 1
+            c = ((from_pos.x * to_pos.y) - (to_pos.x * from_pos.y)) / (to_pos.x - from_pos.x)
         else
-            routes_from[destination_id] = route_info
+            a = 1
+            b = 0
+            c = -from_pos.x
         end
 
-        if not route_info then
-            local src_neighbors = map_node_list[source_id].neighbor_id
-            local dst_neighbors = map_node_list[destination_id].neighbor_id
+        local ab_len2    = a * a + b * b
+        local inv_ab_len = 1 / math.sqrt(ab_len2)
 
-            local found = false
-            for i = 1, #src_neighbors do
-                if src_neighbors[i] == destination_id then
-                    found = true
-                    break
-                end
-            end
-            if not found then
-                src_neighbors[#src_neighbors + 1] = destination_id
-            end
+        route_info = {
+            a          = a,
+            b          = b,
+            c          = c,
+            distance   = distance(from_pos, to_pos),
+            ab_len2    = ab_len2,
+            inv_ab_len = inv_ab_len,
+            lane_count = lane_count,
+            lane_offset = lane_offset,
+        }
+    else
+        -- Reused route_info (two-way), ensure lane info is set
+        route_info.lane_count  = lane_count
+        route_info.lane_offset = lane_offset
+    end
 
-            found = false
-            for i = 1, #dst_neighbors do
-                if dst_neighbors[i] == source_id then
-                    found = true
-                    break
-                end
-            end
-            if not found then
-                dst_neighbors[#dst_neighbors + 1] = source_id
-            end
+    routes_from[destination_id] = route_info
+
+    -- Update neighbor lists
+    local src_neighbors = map_node_list[source_id].neighbor_id
+    local dst_neighbors = map_node_list[destination_id].neighbor_id
+
+    local found = false
+    for i = 1, #src_neighbors do
+        if src_neighbors[i] == destination_id then
+            found = true
+            break
         end
+    end
+    if not found then
+        src_neighbors[#src_neighbors + 1] = destination_id
+    end
+
+    found = false
+    for i = 1, #dst_neighbors do
+        if dst_neighbors[i] == source_id then
+            found = true
+            break
+        end
+    end
+    if not found then
+        dst_neighbors[#dst_neighbors + 1] = source_id
     end
 
     map:bump_route_version(source_id, destination_id)
-    return routes_from[destination_id]
+    return route_info
 end
 
 local function map_remove_oneway_route(map, source_id, destination_id)
@@ -1017,18 +1036,29 @@ function Map:add_node(position)
     return node_id
 end
 
-function Map:add_route(source_id, destination_id, is_one_way)
+function Map:add_route(source_id, destination_id, is_one_way, lane_count, lane_offset)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
+
     local map_node_list = get_map_state(self).map_node_list
     assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
     assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
-    if source_id == destination_id then return end
+    if source_id == destination_id then
+        return
+    end
 
-    local route_info = map_add_oneway_route(self, source_id, destination_id, nil)
+    -- defaults
+    lane_count  = lane_count or 1
+    if lane_count < 1 then lane_count = 1 end
+    lane_offset = lane_offset or DEFAULT_ROUTE_LANE_OFFSET
+
+    -- create forward route
+    local route_info = map_add_oneway_route(self, source_id, destination_id, nil, lane_count, lane_offset)
+
+    -- create reverse route if not one-way
     if not is_one_way then
-        map_add_oneway_route(self, destination_id, source_id, route_info)
+        map_add_oneway_route(self, destination_id, source_id, route_info, lane_count, lane_offset)
     end
 
     map_update_node_type(self, source_id)
@@ -1235,6 +1265,123 @@ function Map:calculate_to_nearest_route(position)
         route_from_id     = min_from,
         route_to_id       = min_to,
     }
+end
+local function compute_lane_center_offset(lane_index, lane_count, lane_offset)
+    if lane_count <= 1 then
+        return 0
+    end
+    -- lane_offset is distance between lane centers
+    local center = (lane_count + 1) * 0.5
+    return (lane_index - center) * lane_offset
+end
+
+local function ensure_player_lane_state(self_player, route_info)
+    -- Initialize lane index if needed
+    if not self_player._lane_index or self_player._lane_index < 1 or self_player._lane_index > (route_info.lane_count or 1) then
+        local lc = route_info.lane_count or 1
+        if lc <= 1 then
+            self_player._lane_index = 1
+        else
+            -- deterministic initial lane based on id
+            self_player._lane_index = (self_player.id % lc) + 1
+        end
+    end
+
+    local lane_count  = route_info.lane_count or 1
+    local lane_offset = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
+    local target = compute_lane_center_offset(self_player._lane_index, lane_count, lane_offset)
+
+    if self_player._lane_target_offset == nil then
+        self_player._lane_target_offset = target
+    else
+        self_player._lane_target_offset = target
+    end
+
+    if self_player._lane_current_offset == nil then
+        self_player._lane_current_offset = self_player._lane_target_offset
+    end
+
+    if self_player._lane_switch_cooldown == nil then
+        self_player._lane_switch_cooldown = 0
+    end
+end
+
+local function apply_soft_lane_offset(self_player)
+    local current = self_player._lane_current_offset or 0
+    local target  = self_player._lane_target_offset or 0
+    local factor  = 0.15  -- soft switching factor per update
+
+    local new = current + (target - current) * factor
+    self_player._lane_current_offset = new
+    return new
+end
+
+local function compute_lane_switch_cooldown(speed, lane_count)
+    local base       = 20.0   -- base in "ticks"
+    local speed_fac  = 0.05   -- more speed → less cooldown
+    local lane_fac   = 0.25   -- more lanes → less cooldown
+
+    local denom = 1 + speed * speed_fac
+    denom = denom * (1 + (lane_count - 1) * lane_fac)
+
+    local ticks = base / denom
+    if ticks < 5 then ticks = 5 end
+    return ticks
+end
+
+local function compute_lane_pressure_for_index(state, lane_index, route_info)
+    -- Simple lane pressure: count players whose lane_index == lane_index
+    local players = state.players
+    local count = 0
+    for _, p in pairs(players) do
+        if p._lane_index == lane_index then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function attempt_lane_switch(map, self_player, route_info, blocked_ahead, slower_ahead, speed)
+    local lane_count = route_info.lane_count or 1
+    if lane_count <= 1 then
+        return
+    end
+
+    if not blocked_ahead and not slower_ahead then
+        return
+    end
+
+    if self_player._lane_switch_cooldown and self_player._lane_switch_cooldown > 0 then
+        return
+    end
+
+    local state = get_map_state(map)
+    local current_lane = self_player._lane_index or 1
+
+    local best_lane = current_lane
+    local best_pressure = compute_lane_pressure_for_index(state, current_lane, route_info)
+
+    -- check adjacent lanes
+    for delta = -1, 1 do
+        if delta ~= 0 then
+            local candidate = current_lane + delta
+            if candidate >= 1 and candidate <= lane_count then
+                local pressure = compute_lane_pressure_for_index(state, candidate, route_info)
+                if pressure < best_pressure then
+                    best_pressure = pressure
+                    best_lane = candidate
+                end
+            end
+        end
+    end
+
+    if best_lane ~= current_lane then
+        self_player._lane_index = best_lane
+        local lc  = route_info.lane_count or 1
+        local lof = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
+        self_player._lane_target_offset = compute_lane_center_offset(best_lane, lc, lof)
+        self_player._lane_switch_cooldown = compute_lane_switch_cooldown(speed, lc)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -1454,7 +1601,6 @@ end
 ----------------------------------------------------------------------
 -- Movement initialization
 ----------------------------------------------------------------------
-
 function Map:move_internal_initialize(source_position, move_data)
     local near_result = self:calculate_to_nearest_route(source_position)
     if not near_result or #move_data.destination_list == 0 then
@@ -1466,34 +1612,42 @@ function Map:move_internal_initialize(source_position, move_data)
         return move_data
     end
 
+    local state          = get_map_state(self)
+    local map_route_list = state.map_route_list
+    local map_node_list  = state.map_node_list
+
     local from_path, to_path
-    local map_route_list = get_map_state(self).map_route_list
 
     if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
-        from_path = self:fetch_path(near_result.route_from_id,
-                                    move_data.destination_list[move_data.destination_index])
+        from_path = self:fetch_path(
+            near_result.route_from_id,
+            move_data.destination_list[move_data.destination_index]
+        )
     end
     if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
-        to_path = self:fetch_path(near_result.route_to_id,
-                                  move_data.destination_list[move_data.destination_index])
+        to_path = self:fetch_path(
+            near_result.route_to_id,
+            move_data.destination_list[move_data.destination_index]
+        )
     end
 
     local position_list = {}
     local node_ids_list = {}
 
-    position_list[1] = source_position
+    -- source position is already a value, but copy for safety/consistency
+    position_list[1] = vmath.vector3(source_position.x, source_position.y, source_position.z)
     local pos_count = 1
 
-    if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
+    if (near_result.distance > move_data.config.gameobject_threshold + 1)
+        and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
-        position_list[pos_count] = near_result.position_on_route
+        local p = near_result.position_on_route
+        position_list[pos_count] = vmath.vector3(p.x, p.y, p.z)
     end
 
-    local map_node_list = get_map_state(self).map_node_list
-
     if from_path or to_path then
-        local from_distance = huge
-        local to_distance   = huge
+        local from_distance = math.huge
+        local to_distance   = math.huge
 
         local from_node_pos = map_node_list[near_result.route_from_id].position
         local to_node_pos   = map_node_list[near_result.route_to_id].position
@@ -1507,31 +1661,99 @@ function Map:move_internal_initialize(source_position, move_data)
 
         if from_distance <= to_distance then
             pos_count = pos_count + 1
-            position_list[pos_count] = from_node_pos
+            do
+                local p = from_node_pos
+                position_list[pos_count] = vmath.vector3(p.x, p.y, p.z)
+            end
             node_ids_list[#node_ids_list + 1] = near_result.route_from_id
 
             local fp = from_path.path
-            -- SKIP the first node, it's the same as from_node_pos
+            -- skip first node (same as from_node_pos)
             for i = 2, #fp do
                 pos_count = pos_count + 1
-                position_list[pos_count] = map_node_list[fp[i]].position
+                local np = map_node_list[fp[i]].position
+                position_list[pos_count] = vmath.vector3(np.x, np.y, np.z)
                 node_ids_list[#node_ids_list + 1] = fp[i]
             end
         else
             pos_count = pos_count + 1
-            position_list[pos_count] = to_node_pos
+            do
+                local p = to_node_pos
+                position_list[pos_count] = vmath.vector3(p.x, p.y, p.z)
+            end
             node_ids_list[#node_ids_list + 1] = near_result.route_to_id
 
             local tp = to_path.path
-            -- SKIP the first node, it's the same as to_node_pos
+            -- skip first node (same as to_node_pos)
             for i = 2, #tp do
                 pos_count = pos_count + 1
-                position_list[pos_count] = map_node_list[tp[i]].position
+                local np = map_node_list[tp[i]].position
+                position_list[pos_count] = vmath.vector3(np.x, np.y, np.z)
                 node_ids_list[#node_ids_list + 1] = tp[i]
             end
         end
     end
 
+    ----------------------------------------------------------------------
+    -- Lane assignment + lateral offset per segment (before curvature)
+    ----------------------------------------------------------------------
+    if pos_count > 1 and #node_ids_list > 0 then
+        -- Use the first route to initialize lane state
+        local first_from  = node_ids_list[1]
+        local first_to    = node_ids_list[2] or node_ids_list[1]
+        local routes_from = map_route_list[first_from]
+        local route_info  = routes_from and routes_from[first_to]
+
+        if route_info then
+            ensure_player_lane_state(move_data, route_info)
+            local lane_current_offset = apply_soft_lane_offset(move_data)
+
+            if lane_current_offset ~= 0 then
+                local node_index = 1
+                for i = 1, pos_count - 1 do
+                    local p1 = position_list[i]
+                    local p2 = position_list[i + 1]
+
+                    local dx = p2.x - p1.x
+                    local dy = p2.y - p1.y
+                    local len = math.sqrt(dx * dx + dy * dy)
+
+                    if len > 0 then
+                        local id1 = node_ids_list[node_index]
+                        local id2 = node_ids_list[node_index + 1]
+
+                        local rinfo = nil
+                        if id1 and id2 then
+                            local rf = map_route_list[id1]
+                            rinfo = rf and rf[id2]
+                        end
+
+                        local lc  = (rinfo and rinfo.lane_count)  or (route_info.lane_count or 1)
+                        local lof = (rinfo and rinfo.lane_offset) or (route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET)
+
+                        local lane_center = compute_lane_center_offset(move_data._lane_index or 1, lc, lof)
+                        local offset = lane_center
+
+                        local nx = -dy / len
+                        local ny =  dx / len
+
+                        p1.x = p1.x + nx * offset
+                        p1.y = p1.y + ny * offset
+                        p2.x = p2.x + nx * offset
+                        p2.y = p2.y + ny * offset
+
+                        if rinfo then
+                            node_index = node_index + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    ----------------------------------------------------------------------
+    -- Curvature generation
+    ----------------------------------------------------------------------
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
@@ -1545,11 +1767,15 @@ function Map:move_internal_initialize(source_position, move_data)
             for k = 1, #curve_temp do curve_temp[k] = nil end
 
             local partial_position_list, Q_before, R_after =
-                process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1],
-                                       move_data.config.path_curve_roundness,
-                                       move_data.config.path_curve_tightness,
-                                       move_data.config.path_curve_max_distance_from_corner,
-                                       curve_temp)
+                process_path_curvature(
+                    position_list[i - 1],
+                    position_list[i],
+                    position_list[i + 1],
+                    move_data.config.path_curve_roundness,
+                    move_data.config.path_curve_tightness,
+                    move_data.config.path_curve_max_distance_from_corner,
+                    curve_temp
+                )
 
             if i == 2 then
                 path_count = path_count + 1
@@ -1587,11 +1813,12 @@ end
 function Map:player_update(self_player, speed)
     assert(self_player, "You must provide defold move data")
 
+    local state = get_map_state(self)
     local path       = self_player.path
     local path_index = self_player.path_index
 
     ----------------------------------------------------------------------
-    -- 1. Path invalidation
+    -- Path invalidation
     ----------------------------------------------------------------------
     if path_index ~= 0 then
         local ids = self_player.path_node_ids
@@ -1605,7 +1832,7 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 2. Rotation smoothing helper
+    -- Rotation smoothing helper
     ----------------------------------------------------------------------
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
@@ -1639,7 +1866,7 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 3. No path
+    -- No path
     ----------------------------------------------------------------------
     if path_index == 0 then
         if self_player.initial_angle then
@@ -1656,356 +1883,109 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 4. Collision avoidance helper (optimized, same behavior)
+    -- Simple lane-aware collision + overtaking
     ----------------------------------------------------------------------
-    local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
-        local cfg = self_player.config
-        if not cfg.collision_enabled then
-            self_player._debug_avoid_x = 0
-            self_player._debug_avoid_y = 0
-            self_player._debug_final_x = dir_x
-            self_player._debug_final_y = dir_y
-            self_player._debug_density = 0
-
-            self_player._last_dir_x    = dir_x
-            self_player._last_dir_y    = dir_y
-            self_player._last_speed    = speed
-
-            self_player._smooth_speed  = speed
-            self_player._smooth_dir_x  = dir_x
-            self_player._smooth_dir_y  = dir_y
-            return dir_x, dir_y, speed
-        end
-
-        local preset = COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
-
+    local function lane_aware_adjustment(dir_x, dir_y, speed)
         local px = self_player.current_position.x
         local py = self_player.current_position.y
 
-        local radius    = cfg.collision_radius
-        local radius_sq = radius * radius
+        local blocked_ahead = false
+        local slower_ahead  = false
 
-        local avoid_x, avoid_y = 0, 0
-        local slow_factor      = 1
+        local base_radius = self_player.config.collision_radius or 0
 
-        local strongest_reactive   = 0
-        local strongest_predictive = 0
-        local strongest_queueing   = 0
-
-        -- dynamic lookahead
-        local lookahead = preset.lookahead_min + speed * preset.lookahead_speed_factor
-        if lookahead > preset.lookahead_max then
-            lookahead = preset.lookahead_max
-        elseif lookahead < preset.lookahead_min then
-            lookahead = preset.lookahead_min
-        end
-
-        local future_px = px + dir_x * speed * lookahead
-        local future_py = py + dir_y * speed * lookahead
-
-        -- reuse per-player candidates table
-        local candidates = self_player._scratch_candidates or {}
-        self_player._scratch_candidates = candidates
-        local count = 0
-
-        -- clear previous contents
-        local c_len = #candidates
-        for i = 1, c_len do
-            candidates[i] = nil
-        end
-
-        if cfg.collision_groups then
-            for _, group in ipairs(cfg.collision_groups) do
-                local g = get_map_state(map).players_by_group[group]
-                if g then
-                    for key in pairs(g) do
-                        count = count + 1
-                        candidates[count] = get_map_state(map).players[key]
-                    end
-                end
-            end
-        else
-            for _, p in pairs(get_map_state(map).players) do
-                count = count + 1
-                candidates[count] = p
-            end
-        end
-
-        -- path perpendicular
-        local lx = -dir_y
-        local ly =  dir_x
-
-        -- main loop
-        for i = 1, count do
-            local other = candidates[i]
+        local players = state.players
+        for _, other in pairs(players) do
             if other ~= self_player then
                 local ox = other.current_position.x
                 local oy = other.current_position.y
 
-                -- predict other
-                local ofx = ox
-                local ofy = oy
-
-                local odx = other._last_dir_x
-                if odx then
-                    local ospeed = other._last_speed
-                    local ody = other._last_dir_y
-                    ofx = ox + odx * ospeed * lookahead
-                    ofy = oy + ody * ospeed * lookahead
-                end
-
-                -- current distance
-                local dx = px - ox
-                local dy = py - oy
+                local dx = ox - px
+                local dy = oy - py
                 local dist_sq = dx*dx + dy*dy
 
-                -- future distance
-                local fdx = future_px - ofx
-                local fdy = future_py - ofy
-                local fdist_sq = fdx*fdx + fdy*fdy
+                if dist_sq > 0 then
+                    ------------------------------------------------------------
+                    -- LANE‑AWARE DETECTION RADIUS
+                    ------------------------------------------------------------
+                    local my_lane    = self_player._lane_index or 1
+                    local other_lane = other._lane_index or 1
+                    local lane_delta = math.abs(my_lane - other_lane)
 
-                -- 1. Reactive avoidance
-                if dist_sq < radius_sq and dist_sq > 0 then
-                    local dist = math.sqrt(dist_sq)
-                    local overlap = (radius - dist) * (1 / radius)
-
-                    if overlap > strongest_reactive then
-                        strongest_reactive = overlap
-                    end
-
-                    local inv_dist = 1 / dist
-                    local rx = dx * inv_dist
-                    local ry = dy * inv_dist
-                    local lateral = rx * lx + ry * ly
-                    if lateral == 0 then
-                        lateral = (self_player.id % 2 == 0) and 1 or -1
-                    end
-
-                    local force = overlap * (radius * preset.reactive_scale)
-                    local lat_force = lateral * force
-                    avoid_x = avoid_x + lx * lat_force
-                    avoid_y = avoid_y + ly * lat_force
-
-                    local dot = dx * dir_x + dy * dir_y
-                    if dot < 0 then
-                        local factor = 1 - overlap * preset.reactive_slow
-                        if factor < slow_factor then
-                            slow_factor = factor
-                        end
-                    end
-                end
-
-                -- 2. Predictive avoidance
-                if fdist_sq < radius_sq and fdist_sq > 0 then
-                    local fdist = math.sqrt(fdist_sq)
-                    local foverlap = (radius - fdist) * (1 / radius)
-
-                    if foverlap > strongest_predictive then
-                        strongest_predictive = foverlap
-                    end
-
-                    local inv_fdist = 1 / fdist
-                    local rx = fdx * inv_fdist
-                    local ry = fdy * inv_fdist
-                    local lateral = rx * lx + ry * ly
-                    if lateral == 0 then
-                        lateral = (self_player.id % 2 == 0) and 1 or -1
-                    end
-
-                    local force = foverlap * (radius * preset.predictive_scale)
-                    local lat_force = lateral * force
-                    avoid_x = avoid_x + lx * lat_force
-                    avoid_y = avoid_y + ly * lat_force
-
-                    local dot = fdx * dir_x + fdy * dir_y
-                    if dot < 0 then
-                        local factor = 1 - foverlap * preset.predictive_slow
-                        if factor < slow_factor then
-                            slow_factor = factor
-                        end
-                    end
-                end
-
-                -- 3. Queueing
-                local odx2 = other._last_dir_x
-                if odx2 then
-                    local ody2 = other._last_dir_y
-                    local align = dir_x * odx2 + dir_y * ody2
-                    if align > 0.7 then
-                        local dx2 = ox - px
-                        local dy2 = oy - py
-                        local dist2_sq = dx2*dx2 + dy2*dy2
-
-                        local desired = radius * preset.queue_spacing_factor
-                        local desired_sq = desired * desired
-
-                        if dist2_sq < desired_sq and dist2_sq > 0 then
-                            local dist2 = math.sqrt(dist2_sq)
-                            local overlap2 = (desired - dist2) / desired
-
-                            if overlap2 > strongest_queueing then
-                                strongest_queueing = overlap2
+                    -- lane_offset depends on the current route
+                    local lane_offset = DEFAULT_ROUTE_LANE_OFFSET
+                    do
+                        local ids = self_player.path_node_ids
+                        if ids and #ids >= 2 then
+                            local from_id = ids[1]
+                            local to_id   = ids[2]
+                            local routes_from = state.map_route_list[from_id]
+                            local route_info  = routes_from and routes_from[to_id]
+                            if route_info then
+                                lane_offset = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
                             end
+                        end
+                    end
 
-                            local factor = 1 - overlap2 * preset.queue_slow
-                            if factor < slow_factor then
-                                slow_factor = factor
+                    -- expand detection radius based on lane separation
+                    local effective_radius = base_radius + lane_delta * lane_offset
+                    local effective_radius_sq = effective_radius * effective_radius
+
+                    ------------------------------------------------------------
+                    -- DETECTION USING EXPANDED RADIUS
+                    ------------------------------------------------------------
+                    if dist_sq < effective_radius_sq then
+                        local dot = dx * dir_x + dy * dir_y
+                        if dot > 0 then
+                            local dist = math.sqrt(dist_sq)
+
+                            -- blocked if too close
+                            if dist < effective_radius * 0.6 then
+                                blocked_ahead = true
+
+                                if other._last_speed and other._last_speed < speed then
+                                    slower_ahead = true
+                                end
                             end
-
-                            local back_force = overlap2 * (radius * 0.2)
-                            avoid_x = avoid_x - dir_x * back_force
-                            avoid_y = avoid_y - dir_y * back_force
-
-                            local side = (self_player.id % 2 == 0) and 1 or -1
-                            local side_force = overlap2 * 0.1
-                            avoid_x = avoid_x + (-dir_y) * side * side_force
-                            avoid_y = avoid_y + ( dir_x) * side * side_force
                         end
                     end
                 end
             end
         end
 
-        -- 4. Density-based slowdown
-        local density_radius = radius * preset.density_radius_factor
-        local density_radius_sq = density_radius * density_radius
+        -- decrement cooldown
+        if self_player._lane_switch_cooldown and self_player._lane_switch_cooldown > 0 then
+            self_player._lane_switch_cooldown = self_player._lane_switch_cooldown - 1
+        end
 
-        local neighbor_count = 0
-        local density_sum = 0
-
-        for i = 1, count do
-            local other = candidates[i]
-            if other ~= self_player then
-                local ox = other.current_position.x
-                local oy = other.current_position.y
-
-                local dx = px - ox
-                local dy = py - oy
-                local dist_sq = dx*dx + dy*dy
-
-                if dist_sq < density_radius_sq then
-                    neighbor_count = neighbor_count + 1
-                    density_sum = density_sum + (1 - dist_sq / density_radius_sq)
-                end
+        -- try lane switch if needed
+        local ids = self_player.path_node_ids
+        if ids and #ids >= 2 then
+            local from_id = ids[1]
+            local to_id   = ids[2]
+            local routes_from = state.map_route_list[from_id]
+            local route_info  = routes_from and routes_from[to_id]
+            if route_info then
+                attempt_lane_switch(self, self_player, route_info, blocked_ahead, slower_ahead, speed)
             end
         end
 
-        local density = 0
-        if neighbor_count > 0 then
-            density = density_sum / neighbor_count
-            local density_slow = 1 - density * preset.density_slow_factor
-            if density_slow < slow_factor then
-                slow_factor = density_slow
-            end
+        -- small speed reduction if blocked
+        if blocked_ahead then
+            speed = speed * 0.8
         end
 
-        self_player._debug_density = density
-
-        -- no avoidance
-        if strongest_reactive == 0 and strongest_predictive == 0 and strongest_queueing == 0 then
-            self_player._debug_avoid_x = 0
-            self_player._debug_avoid_y = 0
-            self_player._debug_final_x = dir_x
-            self_player._debug_final_y = dir_y
-
-            self_player._last_dir_x   = dir_x
-            self_player._last_dir_y   = dir_y
-            self_player._last_speed   = speed
-
-            self_player._smooth_speed = speed
-            self_player._smooth_dir_x = dir_x
-            self_player._smooth_dir_y = dir_y
-
-            return dir_x, dir_y, speed
-        end
-
-        -- combine forces
-        local predictive_weight = strongest_predictive * 0.6
-        if predictive_weight > 1 then
-            predictive_weight = 1
-        end
-
-        local base_weight = 1 - predictive_weight
-        if base_weight < 0 then
-            base_weight = 0
-        end
-
-        local raw_x = dir_x * base_weight + avoid_x
-        local raw_y = dir_y * base_weight + avoid_y
-
-        -- normalize
-        local len = raw_x*raw_x + raw_y*raw_y
-        if len > 0 then
-            local inv = 1 / math.sqrt(len)
-            raw_x = raw_x * inv
-            raw_y = raw_y * inv
-        else
-            raw_x, raw_y = 0, 0
-        end
-
-        -- path recentering
-        local alignment = raw_x * dir_x + raw_y * dir_y
-        if alignment < 0.6 then
-            local correction = (0.6 - alignment) * preset.path_recentering
-            raw_x = raw_x + dir_x * correction
-            raw_y = raw_y + dir_y * correction
-
-            local len2 = raw_x*raw_x + raw_y*raw_y
-            if len2 > 0 then
-                local inv2 = 1 / math.sqrt(len2)
-                raw_x = raw_x * inv2
-                raw_y = raw_y * inv2
-            end
-        end
-
-        -- direction smoothing
-        local ds = preset.dir_smoothing
-
-        local sdx = self_player._smooth_dir_x or raw_x
-        local sdy = self_player._smooth_dir_y or raw_y
-
-        sdx = sdx + (raw_x - sdx) * ds
-        sdy = sdy + (raw_y - sdy) * ds
-
-        local slen = sdx*sdx + sdy*sdy
-        if slen > 0 then
-            local invs = 1 / math.sqrt(slen)
-            sdx = sdx * invs
-            sdy = sdy * invs
-        end
-
-        -- speed smoothing
-        local target_speed = speed * slow_factor
-        local ss = preset.speed_smoothing
-
-        local smooth_speed = self_player._smooth_speed or target_speed
-        smooth_speed = smooth_speed + (target_speed - smooth_speed) * ss
-
-        -- store debug + predictive memory
-        self_player._debug_avoid_x = avoid_x
-        self_player._debug_avoid_y = avoid_y
-        self_player._debug_final_x = sdx
-        self_player._debug_final_y = sdy
-
-        self_player._smooth_dir_x = sdx
-        self_player._smooth_dir_y = sdy
-        self_player._smooth_speed = smooth_speed
-
-        self_player._last_dir_x = sdx
-        self_player._last_dir_y = sdy
-        self_player._last_speed = smooth_speed
-
-        return sdx, sdy, smooth_speed
+        return dir_x, dir_y, speed
     end
 
     ----------------------------------------------------------------------
-    -- 5. Movement loop
+    -- Movement loop
     ----------------------------------------------------------------------
     local threshold = self_player.config.gameobject_threshold + 1
     local threshold_sq = threshold * threshold
 
     local last_index = #path
-    local map_node_list = get_map_state(self).map_node_list
+    local map_node_list = state.map_node_list
 
     for i = path_index, last_index do
         local target = path[i]
@@ -2021,7 +2001,7 @@ function Map:player_update(self_player, speed)
             local dir_x = vx * inv_len
             local dir_y = vy * inv_len
 
-            dir_x, dir_y, speed = compute_collision_avoidance(self, self_player, dir_x, dir_y, speed)
+            dir_x, dir_y, speed = lane_aware_adjustment(dir_x, dir_y, speed)
 
             if self_player.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
@@ -2033,6 +2013,10 @@ function Map:player_update(self_player, speed)
             self_player.current_position.x = new_x
             self_player.current_position.y = new_y
 
+            self_player._last_dir_x = dir_x
+            self_player._last_dir_y = dir_y
+            self_player._last_speed = speed
+
             return {
                 position       = vmath.vector3(new_x, new_y, 0),
                 rotation       = rotation,
@@ -2042,7 +2026,7 @@ function Map:player_update(self_player, speed)
         end
 
         ------------------------------------------------------------------
-        -- 6. Destination reached
+        -- Destination reached
         ------------------------------------------------------------------
         if i == last_index then
             local dest_id  = self_player.destination_list[self_player.destination_index]
