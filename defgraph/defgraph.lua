@@ -1397,7 +1397,6 @@ end
 ----------------------------------------------------------------------
 -- Path curvature
 ----------------------------------------------------------------------
-
 local function process_path_curvature(before, current, after, roundness,
                                       path_curve_tightness,
                                       path_curve_max_distance_from_corner,
@@ -1413,17 +1412,26 @@ local function process_path_curvature(before, current, after, roundness,
     local R_after  = current / path_curve_tightness +
                      (path_curve_tightness - 1) / path_curve_tightness * after
 
-    if distance(Q_before, before) > path_curve_max_distance_from_corner then
-        Q_before = vmath.lerp(path_curve_max_distance_from_corner / distance(before, current), before, current)
+    -- NEW: guard zero-length segments and reuse distances
+    local bc_dist = distance(before, current)
+    local ca_dist = distance(current, after)
+
+    if bc_dist > 0 then
+        if distance(Q_before, before) > path_curve_max_distance_from_corner then
+            Q_before = vmath.lerp(path_curve_max_distance_from_corner / bc_dist, before, current)
+        end
+        if distance(R_before, current) > path_curve_max_distance_from_corner then
+            R_before = vmath.lerp(path_curve_max_distance_from_corner / bc_dist, current, before)
+        end
     end
-    if distance(R_before, current) > path_curve_max_distance_from_corner then
-        R_before = vmath.lerp(path_curve_max_distance_from_corner / distance(before, current), current, before)
-    end
-    if distance(Q_after, current) > path_curve_max_distance_from_corner then
-        Q_after = vmath.lerp(path_curve_max_distance_from_corner / distance(current, after), current, after)
-    end
-    if distance(R_after, after) > path_curve_max_distance_from_corner then
-        R_after = vmath.lerp(path_curve_max_distance_from_corner / distance(current, after), after, current)
+
+    if ca_dist > 0 then
+        if distance(Q_after, current) > path_curve_max_distance_from_corner then
+            Q_after = vmath.lerp(path_curve_max_distance_from_corner / ca_dist, current, after)
+        end
+        if distance(R_after, after) > path_curve_max_distance_from_corner then
+            R_after = vmath.lerp(path_curve_max_distance_from_corner / ca_dist, after, current)
+        end
     end
 
     if roundness ~= 1 then
@@ -1503,7 +1511,8 @@ function Map:move_internal_initialize(source_position, move_data)
             node_ids_list[#node_ids_list + 1] = near_result.route_from_id
 
             local fp = from_path.path
-            for i = 1, #fp do
+            -- SKIP the first node, it's the same as from_node_pos
+            for i = 2, #fp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[fp[i]].position
                 node_ids_list[#node_ids_list + 1] = fp[i]
@@ -1514,7 +1523,8 @@ function Map:move_internal_initialize(source_position, move_data)
             node_ids_list[#node_ids_list + 1] = near_result.route_to_id
 
             local tp = to_path.path
-            for i = 1, #tp do
+            -- SKIP the first node, it's the same as to_node_pos
+            for i = 2, #tp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[tp[i]].position
                 node_ids_list[#node_ids_list + 1] = tp[i]

@@ -6,14 +6,14 @@ function init(self)
 	self.map = defgraph.create_or_get_map("MyMap")
 
 	local config = defgraph.PlayerConfig.new({
-		gameobject_threshold = 15,
+		gameobject_threshold = 3,
 		allow_enter_on_route = true,
 		path_curve_tightness = 3,
-		path_curve_roundness = 1,
-		path_curve_max_distance_from_corner = 100,
+		path_curve_roundness = 3,
+		path_curve_max_distance_from_corner = 20,
 
 		collision_enabled = true,
-		collision_radius = 20,
+		collision_radius = 10,
 		collision_groups = { "myGroup" },
 		collision_behavior = defgraph.CollisionBehavior.Balanced
 	})
@@ -22,15 +22,15 @@ function init(self)
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
 										{ "myGroup" },
 										go.get_position(),
-										{ 36, 1 },
-										defgraph.ROUTETYPE.CYCLE,
+										{ 1, 5, 7 },
+										defgraph.ROUTETYPE.SHUFFLE,
 										vmath.vector3(0, 1, 0),
 										config)
 end
 
 function update(self, dt)
 	-- defgraph player calculation loop
-	self.update_result = self.player:update(100 * dt)
+	self.update_result = self.player:update(50 * dt)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)

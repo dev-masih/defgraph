@@ -3,68 +3,82 @@ local defgraph = require "defgraph.defgraph"
 
 function init(self)
     msg.post(".", "acquire_input_focus")
-    
+
     self.map = defgraph.create_or_get_map("MyMap")
 
-    self.node_ids = {}
-    self.node_positions = {}
-    self.node_goas_up = {}
+    -- change debug properties
+    self.map:debug_set_properties(vmath.vector4(1, 0, 1, 1), vmath.vector4(0, 1, 0, 1), vmath.vector4(0, 1, 1, 1), 5)
 
     -- defining graph nodes of the map
-    local is_up = true
-    local start_position = vmath.vector3(100, 200, 0)
-    for i = 1, 36 do
-        if is_up then
-            start_position = start_position + vmath.vector3(20, 20, 0)
-        else
-            start_position = start_position + vmath.vector3(20, -20, 0)
-        end
-
-        if start_position.y >= 400 then
-            is_up = false
-        elseif start_position.y <= 200 then
-            is_up = true
-        end
-
-        table.insert(self.node_ids, self.map:create_node(start_position))
-        table.insert(self.node_positions, start_position)
-        table.insert(self.node_goas_up, is_up)
-    end
+    node01 = self.map:create_node(vmath.vector3(710, 550, 0))
+    node02 = self.map:create_node(vmath.vector3(275, 270, 0))
+    node03 = self.map:create_node(vmath.vector3(275, 455, 0))
+    node04 = self.map:create_node(vmath.vector3(580, 455, 0))
+    node05 = self.map:create_node(vmath.vector3(800, 550, 0))
+    node06 = self.map:create_node(vmath.vector3(450, 160, 0))
+    node06 = self.map:create_node(vmath.vector3(538, 160, 0))
+    node07 = self.map:create_node(vmath.vector3(538, 215, 0))
+    node08 = self.map:create_node(vmath.vector3(625, 215, 0))
+    node09 = self.map:create_node(vmath.vector3(625, 270, 0))
+    node10 = self.map:create_node(vmath.vector3(800, 270, 0))
 
     -- defining routes between nodes
-    for i = 1, #self.node_ids - 1 do
-        self.map:add_route(self.node_ids[i], self.node_ids[i + 1])
-    end
+    self.map:add_route(node05, node10)
+    self.map:add_route(node10, node09)
+    self.map:add_route(node09, node08)
+    self.map:add_route(node08, node07)
+    self.map:add_route(node07, node06)
+    self.map:add_route(node06, node06)
+    self.map:add_route(node06, node02)
+    self.map:add_route(node02, node03)
+    self.map:add_route(node03, node04)
+    self.map:add_route(node04, node05)
+    self.map:add_route(node04, node01)
+
+    self.map_trigger = true
 end
 
 function on_input(self, action_id, action)
     if action_id == hash("left_click") and action.pressed then
         factory.create("#factory", vmath.vector3(action.x, action.y, 0), nil, nil, 0.3)
     end
+    if action_id == hash("right_click") and action.pressed then
+        if self.map_trigger then
+            --self.map:add_route(node08, node07)
+            --self.map:add_route(node01, node05)
+            --self.map:add_route(node02, node01, true)
+            --self.map:add_route(node07, node02, true)
+
+            --self.map:remove_route(node02, node03)
+            --self.map:remove_route(node06, node16)
+            --self.map:remove_route(node08, node16)
+            --self.map:remove_route(node02, node03)
+            --self.map:remove_route(node04, node05)
+
+            self.map_trigger = false
+        else
+            --self.map:remove_route(node08, node07)
+            --self.map:remove_route(node01, node05)
+            --self.map:remove_route(node02, node01, true)
+            --self.map:remove_route(node07, node02, true)
+
+            --self.map:add_route(node02, node03)
+            --self.map:add_route(node06, node16)
+            --self.map:add_route(node08, node16)
+            --self.map:add_route(node02, node03)
+            --self.map:add_route(node04, node05)
+
+            self.map_trigger = true
+        end
+    end
 end
 
 function update(self, dt)
-    for i = 1, 36 do
-        if self.node_goas_up[i] then
-            self.node_positions[i] = self.node_positions[i] + vmath.vector3(0, 1, 0)
-            if self.node_positions[i].y >= 400 then
-                self.node_positions[i].y = 400
-                self.node_goas_up[i] = false
-            end
-        else
-            self.node_positions[i] = self.node_positions[i] - vmath.vector3(0, 1, 0)
-            if self.node_positions[i].y <= 200 then
-                self.node_positions[i].y = 200
-                self.node_goas_up[i] = true
-            end
-        end
-        self.map:update_node_position(self.node_ids[i], self.node_positions[i])
-    end
-
     -- draw debug info of nodes and routes
-    self.map:debug_draw_map_routes()
+    self.map:debug_draw_map_nodes(true, false)
+    --self.map:debug_draw_map_routes()
 
-    msg.post("@render:", "draw_text", { text = "example dynamic node", position = vmath.vector3(20, 630, 0) } )
-    msg.post("@render:", "draw_text", { text = "destinations : cycle between { 36, 1 }", position = vmath.vector3(20, 610, 0) } )
-    msg.post("@render:", "draw_text", { text = "left click: deploy dot", position = vmath.vector3(20, 590, 0) } )
+    msg.post("@render:", "draw_text", { text = "example static node", position = vmath.vector3(20, 630, 0) } )
+    msg.post("@render:", "draw_text", { text = "destinations : shuffled between { 6, 18, 14, 2, 4, 10 }", position = vmath.vector3(20, 610, 0) } )
+    msg.post("@render:", "draw_text", { text = "left click: deploy dot - right click: change routes", position = vmath.vector3(20, 590, 0) } )
 end
