@@ -26,7 +26,7 @@ function init(self)
             is_up = true
         end
 
-        table.insert(self.node_ids, self.map:add_node(start_position))
+        table.insert(self.node_ids, self.map:create_node(start_position))
         table.insert(self.node_positions, start_position)
         table.insert(self.node_goas_up, is_up)
     end

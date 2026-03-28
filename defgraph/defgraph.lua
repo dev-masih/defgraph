@@ -328,6 +328,23 @@ local debug_draw_scale          = 5
 -- Classes
 ----------------------------------------------------------------------
 
+----------------------------------------------------------------------
+-- Node class
+----------------------------------------------------------------------
+local Node = {}
+Node.__index = Node
+
+function Node.new(id, key, position, nodetype)
+    return setmetatable({
+        id        = id,
+        key       = key,
+        position  = position,
+        type      = nodetype,
+        neighbor_id = {},   -- existing neighbor structure
+        groups    = {},   -- node groups: { group_name = true }
+    }, Node)
+end
+
 local Map   = {}
 Map.__index = Map
 
@@ -379,14 +396,19 @@ end
 ----------------------------------------------------------------------
 -- Map constructor
 ----------------------------------------------------------------------
-
 function Map.new()
     local self = {
         -- graph data
-        map_node_list    = {}, -- [node_id] = { position, type, neighbor_id[] }
+        map_node_list    = {}, -- [node_id] = Node
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len }
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] }
-        players = {},          -- player registry
+
+        -- node registry / groups
+        node_registry   = {},  -- key → Node
+        nodes_by_group  = {},  -- group → { node_id = true }
+
+        -- players
+        players         = {},  -- player registry
         players_by_group = {}, -- player group → { key → player }
 
         -- versioning
@@ -394,9 +416,95 @@ function Map.new()
         route_version  = {},   -- [from_id][to_id] = int
 
         map_node_id_iter = 0,  -- node id iterator
-        player_id_iter = 0,    -- player id iterator
+        player_id_iter   = 0,  -- player id iterator
     }
     return setmetatable(self, Map)
+end
+
+----------------------------------------------------------------------
+-- Map: node registry and groups
+----------------------------------------------------------------------
+
+function Map:get_node_by_id(id)
+    return self.map_node_list[id]
+end
+
+function Map:get_node_by_key(key)
+    return self.node_registry[key]
+end
+
+function Map:add_node_to_group(node_id, group)
+    local node = self.map_node_list[node_id]
+    if not node then return false end
+
+    if node.groups[group] then
+        return false
+    end
+
+    node.groups[group] = true
+    self.nodes_by_group[group] = self.nodes_by_group[group] or {}
+    self.nodes_by_group[group][node_id] = true
+
+    return true
+end
+
+function Map:remove_node_from_group(node_id, group)
+    local node = self.map_node_list[node_id]
+    if not node then return end
+
+    if node.groups[group] then
+        node.groups[group] = nil
+    end
+
+    local g = self.nodes_by_group[group]
+    if g then
+        g[node_id] = nil
+        if next(g) == nil then
+            self.nodes_by_group[group] = nil
+        end
+    end
+end
+
+function Map:get_nodes_in_group(group)
+    local g = self.nodes_by_group[group]
+    if not g then return {} end
+
+    local list = {}
+    for node_id in pairs(g) do
+        list[#list + 1] = self.map_node_list[node_id]
+    end
+    return list
+end
+
+function Map:remove_node_by_key(key)
+    assert(key, "You must provide a node key")
+
+    local node = self.node_registry[key]
+    assert(node, ("Unknown node key %s"):format(tostring(key)))
+
+    -- Delegate to the main removal function
+    self:remove_node(node.id)
+end
+
+function Map:remove_nodes_in_group(group)
+    assert(group, "You must provide a group name")
+
+    local g = self.nodes_by_group[group]
+    if not g then return end
+
+    -- Copy node IDs first to avoid modifying the table while iterating
+    local ids = {}
+    for node_id in pairs(g) do
+        ids[#ids + 1] = node_id
+    end
+
+    -- Remove each node using the canonical removal function
+    for i = 1, #ids do
+        self:remove_node(ids[i])
+    end
+
+    -- Remove the group entry itself
+    self.nodes_by_group[group] = nil
 end
 
 function Map:get_player(key)
@@ -490,20 +598,28 @@ function Map:destroy()
         self.players[key] = nil
     end
 
-    -- clear groups
+    -- clear player groups
     for group, list in pairs(self.players_by_group) do
         self.players_by_group[group] = nil
     end
 
+    -- clear nodes
+    for id, node in pairs(self.map_node_list) do
+        self.map_node_list[id] = nil
+    end
+
+    self.node_registry  = {}
+    self.nodes_by_group = {}
+
     -- clear map internals
-    self.map_node_list = {}
-    self.map_route_list = {}
+    self.map_route_list   = {}
     self.pathfinder_cache = {}
-    self.node_version = {}
-    self.route_version = {}
+    self.node_version     = {}
+    self.route_version    = {}
 
     self._destroyed = true
 end
+
 
 function Map:is_player_in_group(key, group)
     local player = self.players[key]
@@ -513,46 +629,6 @@ function Map:is_player_in_group(key, group)
 
     -- player.groups is a set: { groupName = true }
     return player.groups and player.groups[group] == true
-end
-
-function Map:_iterate_unique(groups, fn)
-    local visited = {}
-
-    for _, group in ipairs(groups) do
-        local g = self.players_by_group[group]
-        if g then
-            for key in pairs(g) do
-                if not visited[key] then
-                    visited[key] = true
-                    fn(self.players[key], key)
-                end
-            end
-        end
-    end
-end
-
-function Map:update_group(group, speed)
-    local g = self.players_by_group[group]
-    if not g then return end
-
-    for key in pairs(g) do
-        local player = self.players[key]
-        if player then
-            player:update(speed)
-        end
-    end
-end
-
-function Map:update_groups(groups, speed)
-    self:_iterate_unique(groups, function(player)
-        player:update(speed)
-    end)
-end
-
-function Map:update_all_players(speed)
-    for key, player in pairs(self.players) do
-        player:update(speed)
-    end
 end
 
 function Map:debug_draw_group(group, color, show_projection, show_dirs, show_snap)
@@ -568,14 +644,23 @@ function Map:debug_draw_group(group, color, show_projection, show_dirs, show_sna
 end
 
 function Map:debug_draw_groups(groups, color, show_projection, show_dirs, show_snap)
-    self:_iterate_unique(groups, function(player)
-        player:debug_draw(color, show_projection, show_dirs, show_snap)
-    end)
-end
+    local visited = {}
 
-function Map:debug_draw_all_players(color, show_projection, show_dirs, show_snap)
-    for key, player in pairs(self.players) do
-        player:debug_draw(color, show_projection, show_dirs, show_snap)
+    for i = 1, #groups do
+        local group = groups[i]
+        local g = self.players_by_group[group]
+
+        if g then
+            for key in pairs(g) do
+                if not visited[key] then
+                    visited[key] = true
+                    local player = self.players[key]
+                    if player then
+                        player:debug_draw(color, show_projection, show_dirs, show_snap)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -823,6 +908,85 @@ local function map_remove_oneway_route(map, source_id, destination_id)
     map:bump_route_version(source_id, destination_id)
 end
 
+----------------------------------------------------------------------
+-- Map: node creation
+----------------------------------------------------------------------
+function Map:create_node(position, key, groups)
+    -- key is optional
+    if key ~= nil then
+        assert(type(key) == "string" or type(key) == "userdata",
+            "Map:create_node: key must be a string or hash")
+    end
+
+    -- required vector3
+    assert(position and type(position) == "userdata",
+        "Map:create_node: position must be a vmath.vector3")
+
+    -- optional groups
+    if groups ~= nil then
+        assert(type(groups) == "table",
+            "Map:create_node: groups must be a list of strings")
+        for i = 1, #groups do
+            assert(type(groups[i]) == "string",
+                "Map:create_node: group names must be strings")
+        end
+    end
+
+    ------------------------------------------------------------------
+    -- Generate node id
+    ------------------------------------------------------------------
+    self.map_node_id_iter = self.map_node_id_iter + 1
+    local id = self.map_node_id_iter
+
+    ------------------------------------------------------------------
+    -- Auto-generate key if missing
+    ------------------------------------------------------------------
+    if key == nil then
+        key = "defgraph_default_node_key_" .. tostring(id)
+    end
+
+    ------------------------------------------------------------------
+    -- Create node object
+    ------------------------------------------------------------------
+    local node = Node.new(id, key, position, NODETYPE.SINGLE)
+
+    ------------------------------------------------------------------
+    -- Register node
+    ------------------------------------------------------------------
+    self.map_node_list[id] = node
+    self.node_registry[key] = node
+
+    ------------------------------------------------------------------
+    -- Assign groups
+    ------------------------------------------------------------------
+    if groups then
+        for i = 1, #groups do
+            local group = groups[i]
+            node.groups[group] = true
+
+            self.nodes_by_group[group] = self.nodes_by_group[group] or {}
+            self.nodes_by_group[group][id] = true
+        end
+    end
+
+    ------------------------------------------------------------------
+    -- Version bump
+    ------------------------------------------------------------------
+    self:bump_node_version(id)
+
+    return id
+end
+
+function Map:create_node_xy(x, y, key, groups)
+    assert(type(x) == "number" and type(y) == "number",
+        "Map:create_node_xy: x and y must be numbers")
+
+    local position = vmath.vector3(x, y, 0)
+
+    return self:create_node(position, key, groups)
+end
+
+
 function Map:add_node(position)
     assert(position, "You must provide a position")
 
@@ -883,10 +1047,38 @@ end
 
 function Map:remove_node(node_id)
     assert(node_id, "You must provide a node id")
+
     local map_node_list  = self.map_node_list
     local map_route_list = self.map_route_list
-    assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
 
+    local node = map_node_list[node_id]
+    assert(node, ("Unknown node id %s"):format(tostring(node_id)))
+
+    ------------------------------------------------------------------
+    -- 1. Remove from all node groups
+    ------------------------------------------------------------------
+    if node.groups then
+        for group in pairs(node.groups) do
+            local g = self.nodes_by_group[group]
+            if g then
+                g[node_id] = nil
+                if next(g) == nil then
+                    self.nodes_by_group[group] = nil
+                end
+            end
+        end
+    end
+
+    ------------------------------------------------------------------
+    -- 2. Remove from node registry
+    ------------------------------------------------------------------
+    if node.key then
+        self.node_registry[node.key] = nil
+    end
+
+    ------------------------------------------------------------------
+    -- 3. Remove all routes touching this node
+    ------------------------------------------------------------------
     local to_remove = {}
 
     for from_id, routes in pairs(map_route_list) do
@@ -910,8 +1102,16 @@ function Map:remove_node(node_id)
         self:bump_node_version(to_id)
     end
 
+    ------------------------------------------------------------------
+    -- 4. Remove the node itself
+    ------------------------------------------------------------------
     map_node_list[node_id] = nil
     self:bump_node_version(node_id)
+
+    ------------------------------------------------------------------
+    -- 5. Clear pathfinder cache (paths may contain this node)
+    ------------------------------------------------------------------
+    self.pathfinder_cache = {}
 end
 
 ----------------------------------------------------------------------
@@ -1882,7 +2082,7 @@ function Map:debug_set_properties(node_color, two_way_route_color, one_way_route
     debug_draw_scale          = default(draw_scale, debug_draw_scale)
 end
 
-function Map:debug_draw_map_nodes(is_show_ids)
+function Map:debug_draw_map_nodes(is_show_ids, is_show_meta)
     local s = debug_draw_scale
 
     local up     = vmath.vector3(0,  s, 0)
@@ -1892,9 +2092,15 @@ function Map:debug_draw_map_nodes(is_show_ids)
     local diag   = vmath.vector3( s,  s, 0)
     local ndiag  = vmath.vector3(-s, -s, 0)
 
+    -- FIX: Use fixed pixel offsets so text never overlaps
+    local text_dy = vmath.vector3(0, -14, 0)    -- 14px down per line
+
     for node_id, node in pairs(self.map_node_list) do
         local p = node.position
 
+        ------------------------------------------------------------------
+        -- Draw node ID
+        ------------------------------------------------------------------
         if is_show_ids then
             msg.post("@render:", "draw_text", {
                 text = tostring(node_id),
@@ -1902,6 +2108,46 @@ function Map:debug_draw_map_nodes(is_show_ids)
             })
         end
 
+        ------------------------------------------------------------------
+        -- Draw node key + groups (stacked, fixed spacing)
+        ------------------------------------------------------------------
+        if is_show_meta then
+            -- Key
+            local key_text
+            if node.key and type(node.key) == "string"
+               and node.key:sub(1, 26) == "defgraph_default_node_key_" then
+                key_text = "(no key)"
+            else
+                key_text = node.key and tostring(node.key) or "(no key)"
+            end
+
+            -- Groups
+            local groups_text = "(no groups)"
+            if node.groups and next(node.groups) ~= nil then
+                local tmp = {}
+                for g in pairs(node.groups) do
+                    tmp[#tmp+1] = g
+                end
+                table.sort(tmp)
+                groups_text = table.concat(tmp, ", ")
+            end
+
+            -- Draw key (first line)
+            msg.post("@render:", "draw_text", {
+                text = key_text,
+                position = p + text_dy * 1
+            })
+
+            -- Draw groups (second line)
+            msg.post("@render:", "draw_text", {
+                text = groups_text,
+                position = p + text_dy * 2
+            })
+        end
+
+        ------------------------------------------------------------------
+        -- Draw node shape
+        ------------------------------------------------------------------
         if node.type == NODETYPE.SINGLE then
             msg.post("@render:", "draw_line", { start_point = p + up,    end_point = p + left,  color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + left,  end_point = p + right, color = debug_node_color })
@@ -1919,6 +2165,7 @@ function Map:debug_draw_map_nodes(is_show_ids)
         end
     end
 end
+
 
 function Map:debug_draw_map_routes()
     local arrow = 6
@@ -2309,6 +2556,164 @@ end
 ----------------------------------------------------------------------
 -- Player creation (Map method)
 ----------------------------------------------------------------------
+function Map:normalize_destination_list(list)
+    assert(type(list) == "table", "destination_list must be a table")
+
+    for i = 1, #list do
+        local ref = list[i]
+        local t = type(ref)
+
+        if t == "number" then
+            -- already a node ID
+            -- do nothing
+        elseif t == "string" or t == "userdata" then
+            -- treat as node key
+            local node = self.node_registry[ref]
+            assert(node, "Unknown node key in destination_list: " .. tostring(ref))
+            list[i] = node.id
+        elseif t == "table" and ref.id then
+            -- node object
+            list[i] = ref.id
+        else
+            error("Invalid destination reference at index " .. i)
+        end
+    end
+end
+
+function Map:get_nearest_node_from_groups(position, groups)
+    assert(position and type(position) == "userdata",
+        "get_nearest_node_from_groups: position must be a vmath.vector3")
+
+    -- groups can be a single string or a list
+    local group_list
+    if type(groups) == "string" then
+        group_list = { groups }
+    else
+        assert(type(groups) == "table",
+            "get_nearest_node_from_groups: groups must be string or list of strings")
+        group_list = groups
+    end
+
+    ----------------------------------------------------------------------
+    -- Step 1: Find nearest route entry point from the given position
+    ----------------------------------------------------------------------
+    local near_result = self:calculate_to_nearest_route(position)
+    if not near_result then
+        return nil
+    end
+
+    local start_a = near_result.route_from_id
+    local start_b = near_result.route_to_id
+
+    ----------------------------------------------------------------------
+    -- Step 2: Collect all candidate node IDs from the given groups
+    ----------------------------------------------------------------------
+    local candidates = {}
+
+    for _, group in ipairs(group_list) do
+        local g = self.nodes_by_group[group]
+        if g then
+            for node_id in pairs(g) do
+                candidates[#candidates + 1] = node_id
+            end
+        end
+    end
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    ----------------------------------------------------------------------
+    -- Step 3: For each candidate, compute shortest path distance
+    --         from both possible entry nodes (start_a, start_b)
+    ----------------------------------------------------------------------
+    local best_node = nil
+    local best_dist = math.huge
+
+    for i = 1, #candidates do
+        local target = candidates[i]
+
+        -- Try path from start_a
+        local path_a = self:fetch_path(start_a, target)
+        if path_a then
+            local dist = path_a.distance
+                + distance(position, self.map_node_list[start_a].position)
+
+            if dist < best_dist then
+                best_dist = dist
+                best_node = target
+            end
+        end
+
+        -- Try path from start_b
+        local path_b = self:fetch_path(start_b, target)
+        if path_b then
+            local dist = path_b.distance
+                + distance(position, self.map_node_list[start_b].position)
+
+            if dist < best_dist then
+                best_dist = dist
+                best_node = target
+            end
+        end
+    end
+
+    return best_node
+end
+
+function Map:get_random_node_from_groups(groups)
+    assert(groups, "get_random_node_from_groups: groups required")
+
+    -- Normalize input: allow single string or list
+    local group_list
+    if type(groups) == "string" then
+        group_list = { groups }
+    else
+        assert(type(groups) == "table",
+            "get_random_node_from_groups: groups must be string or list of strings")
+        group_list = groups
+    end
+
+    ------------------------------------------------------------------
+    -- Collect unique node IDs from all groups
+    ------------------------------------------------------------------
+    local collected = {}
+    local count = 0
+
+    for i = 1, #group_list do
+        local group = group_list[i]
+        local g = self.nodes_by_group[group]
+
+        if g then
+            for node_id in pairs(g) do
+                if not collected[node_id] then
+                    collected[node_id] = true
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    if count == 0 then
+        return nil
+    end
+
+    ------------------------------------------------------------------
+    -- Convert to array for random selection
+    ------------------------------------------------------------------
+    local list = {}
+    local idx = 1
+    for node_id in pairs(collected) do
+        list[idx] = node_id
+        idx = idx + 1
+    end
+
+    ------------------------------------------------------------------
+    -- Pick random node
+    ------------------------------------------------------------------
+    local choice = list[math.random(#list)]
+    return choice
+end
 
 function Map:create_player(key, groups, initial_position,
                            destination_list,
@@ -2328,6 +2733,7 @@ function Map:create_player(key, groups, initial_position,
     end
 
     config:validate()
+    self:normalize_destination_list(destination_list)
 
     local destination_id = 1
     local dest_count     = #destination_list
