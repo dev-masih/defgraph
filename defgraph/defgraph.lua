@@ -71,14 +71,6 @@ local function heap_pop(heap)
     return root.id, root.dist
 end
 
-local function copy_table(t)
-    local new_table = {}
-    for k, v in pairs(t) do
-        new_table[k] = v
-    end
-    return new_table
-end
-
 ----------------------------------------------------------------------
 -- Constants
 ----------------------------------------------------------------------
@@ -348,6 +340,23 @@ end
 local Map   = {}
 Map.__index = Map
 
+-- Internal hidden map state (private, not exposed on Map object)
+local map_state = setmetatable({}, {__mode = 'k'})
+
+local function get_map_state(self)
+    local state = map_state[self]
+    assert(state, 'Invalid Map object')
+    return state
+end
+
+local function set_map_state(self, state)
+    map_state[self] = state
+end
+
+function Map.__newindex(self, key, value)
+    error('Cannot set Map.' .. tostring(key) .. ' (Map internal state is read-only)')
+end
+
 local Player   = {}
 Player.__index = Player
 
@@ -397,19 +406,20 @@ end
 -- Map constructor
 ----------------------------------------------------------------------
 function Map.new()
-    local self = {
+    local map = setmetatable({}, Map)
+    local state = {
         -- graph data
         map_node_list    = {}, -- [node_id] = Node
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len }
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] }
 
         -- node registry / groups
-        node_registry   = {},  -- key → Node
-        nodes_by_group  = {},  -- group → { node_id = true }
+        node_registry   = {},  -- key -> Node
+        nodes_by_group  = {},  -- group -> { node_id = true }
 
         -- players
         players         = {},  -- player registry
-        players_by_group = {}, -- player group → { key → player }
+        players_by_group = {}, -- player group -> { key -> player }
 
         -- versioning
         node_version   = {},   -- [node_id] = int
@@ -418,7 +428,8 @@ function Map.new()
         map_node_id_iter = 0,  -- node id iterator
         player_id_iter   = 0,  -- player id iterator
     }
-    return setmetatable(self, Map)
+    set_map_state(map, state)
+    return map
 end
 
 ----------------------------------------------------------------------
@@ -426,15 +437,15 @@ end
 ----------------------------------------------------------------------
 
 function Map:get_node_by_id(id)
-    return self.map_node_list[id]
+    return get_map_state(self).map_node_list[id]
 end
 
 function Map:get_node_by_key(key)
-    return self.node_registry[key]
+    return get_map_state(self).node_registry[key]
 end
 
 function Map:add_node_to_group(node_id, group)
-    local node = self.map_node_list[node_id]
+    local node = get_map_state(self).map_node_list[node_id]
     if not node then return false end
 
     if node.groups[group] then
@@ -442,36 +453,36 @@ function Map:add_node_to_group(node_id, group)
     end
 
     node.groups[group] = true
-    self.nodes_by_group[group] = self.nodes_by_group[group] or {}
-    self.nodes_by_group[group][node_id] = true
+    get_map_state(self).nodes_by_group[group] = get_map_state(self).nodes_by_group[group] or {}
+    get_map_state(self).nodes_by_group[group][node_id] = true
 
     return true
 end
 
 function Map:remove_node_from_group(node_id, group)
-    local node = self.map_node_list[node_id]
+    local node = get_map_state(self).map_node_list[node_id]
     if not node then return end
 
     if node.groups[group] then
         node.groups[group] = nil
     end
 
-    local g = self.nodes_by_group[group]
+    local g = get_map_state(self).nodes_by_group[group]
     if g then
         g[node_id] = nil
         if next(g) == nil then
-            self.nodes_by_group[group] = nil
+            get_map_state(self).nodes_by_group[group] = nil
         end
     end
 end
 
 function Map:get_nodes_in_group(group)
-    local g = self.nodes_by_group[group]
+    local g = get_map_state(self).nodes_by_group[group]
     if not g then return {} end
 
     local list = {}
     for node_id in pairs(g) do
-        list[#list + 1] = self.map_node_list[node_id]
+        list[#list + 1] = get_map_state(self).map_node_list[node_id]
     end
     return list
 end
@@ -479,7 +490,7 @@ end
 function Map:remove_node_by_key(key)
     assert(key, "You must provide a node key")
 
-    local node = self.node_registry[key]
+    local node = get_map_state(self).node_registry[key]
     assert(node, ("Unknown node key %s"):format(tostring(key)))
 
     -- Delegate to the main removal function
@@ -489,7 +500,7 @@ end
 function Map:remove_nodes_in_group(group)
     assert(group, "You must provide a group name")
 
-    local g = self.nodes_by_group[group]
+    local g = get_map_state(self).nodes_by_group[group]
     if not g then return end
 
     -- Copy node IDs first to avoid modifying the table while iterating
@@ -504,21 +515,21 @@ function Map:remove_nodes_in_group(group)
     end
 
     -- Remove the group entry itself
-    self.nodes_by_group[group] = nil
+    get_map_state(self).nodes_by_group[group] = nil
 end
 
 function Map:get_player(key)
-    return self.players[key]
+    return get_map_state(self).players[key]
 end
 
 function Map:remove_player(key)
-    local player = self.players[key]
+    local player = get_map_state(self).players[key]
     if not player then return end
 
     -- Remove from all groups
     if player.groups then
         for group in pairs(player.groups) do
-            local g = self.players_by_group[group]
+            local g = get_map_state(self).players_by_group[group]
             if g then g[key] = nil end
         end
     end
@@ -528,33 +539,33 @@ function Map:remove_player(key)
         player:destroy()
     end
 
-    self.players[key] = nil
+    get_map_state(self).players[key] = nil
 end
 
 function Map:get_players_in_group(group)
-    local g = self.players_by_group[group]
+    local g = get_map_state(self).players_by_group[group]
     if not g then return {} end
 
     local list = {}
     for key in pairs(g) do
-        list[#list + 1] = self.players[key]
+        list[#list + 1] = get_map_state(self).players[key]
     end
     return list
 end
 
 function Map:remove_players_in_group(group)
-    local g = self.players_by_group[group]
+    local g = get_map_state(self).players_by_group[group]
     if not g then return end
 
     for key in pairs(g) do
         self:remove_player(key)
     end
 
-    self.players_by_group[group] = nil
+    get_map_state(self).players_by_group[group] = nil
 end
 
 function Map:add_player_to_group(key, group)
-    local player = self.players[key]
+    local player = get_map_state(self).players[key]
     assert(player, "Player not found: " .. tostring(key))
 
     -- Already in group? Do nothing
@@ -563,66 +574,69 @@ function Map:add_player_to_group(key, group)
     end
 
     -- Create group table if missing
-    self.players_by_group[group] = self.players_by_group[group] or {}
+    get_map_state(self).players_by_group[group] = get_map_state(self).players_by_group[group] or {}
 
     -- Add player to group
-    self.players_by_group[group][key] = true
+    get_map_state(self).players_by_group[group][key] = true
     player.groups[group] = true
 
     return true
 end
 
 function Map:remove_player_from_group(key, group)
-    local player = self.players[key]
+    local player = get_map_state(self).players[key]
     if not player then return end
 
     if player.groups[group] then
         player.groups[group] = nil
     end
 
-    local g = self.players_by_group[group]
+    local g = get_map_state(self).players_by_group[group]
     if g then
         g[key] = nil
         if next(g) == nil then
-            self.players_by_group[group] = nil
+            get_map_state(self).players_by_group[group] = nil
         end
     end
 end
 
 function Map:destroy()
     -- destroy players
-    for key, player in pairs(self.players) do
+    for key, player in pairs(get_map_state(self).players) do
         if player.destroy then
             player:destroy()
         end
-        self.players[key] = nil
+        get_map_state(self).players[key] = nil
     end
 
     -- clear player groups
-    for group, list in pairs(self.players_by_group) do
-        self.players_by_group[group] = nil
+    for group, list in pairs(get_map_state(self).players_by_group) do
+        get_map_state(self).players_by_group[group] = nil
     end
 
     -- clear nodes
-    for id, node in pairs(self.map_node_list) do
-        self.map_node_list[id] = nil
+    for id, node in pairs(get_map_state(self).map_node_list) do
+        get_map_state(self).map_node_list[id] = nil
     end
 
-    self.node_registry  = {}
-    self.nodes_by_group = {}
+    get_map_state(self).node_registry  = {}
+    get_map_state(self).nodes_by_group = {}
 
     -- clear map internals
-    self.map_route_list   = {}
-    self.pathfinder_cache = {}
-    self.node_version     = {}
-    self.route_version    = {}
+    get_map_state(self).map_route_list   = {}
+    get_map_state(self).pathfinder_cache = {}
+    get_map_state(self).node_version     = {}
+    get_map_state(self).route_version    = {}
 
     self._destroyed = true
+
+    -- remove hidden state fully
+    map_state[self] = nil
 end
 
 
 function Map:is_player_in_group(key, group)
-    local player = self.players[key]
+    local player = get_map_state(self).players[key]
     if not player then
         return false
     end
@@ -632,11 +646,11 @@ function Map:is_player_in_group(key, group)
 end
 
 function Map:debug_draw_group(group, color, show_projection, show_dirs, show_snap)
-    local g = self.players_by_group[group]
+    local g = get_map_state(self).players_by_group[group]
     if not g then return end
 
     for key in pairs(g) do
-        local player = self.players[key]
+        local player = get_map_state(self).players[key]
         if player then
             player:debug_draw(color, show_projection, show_dirs, show_snap)
         end
@@ -648,13 +662,13 @@ function Map:debug_draw_groups(groups, color, show_projection, show_dirs, show_s
 
     for i = 1, #groups do
         local group = groups[i]
-        local g = self.players_by_group[group]
+        local g = get_map_state(self).players_by_group[group]
 
         if g then
             for key in pairs(g) do
                 if not visited[key] then
                     visited[key] = true
-                    local player = self.players[key]
+                    local player = get_map_state(self).players[key]
                     if player then
                         player:debug_draw(color, show_projection, show_dirs, show_snap)
                     end
@@ -669,12 +683,12 @@ end
 ----------------------------------------------------------------------
 
 function Map:bump_node_version(node_id)
-    local nv = self.node_version
+    local nv = get_map_state(self).node_version
     nv[node_id] = (nv[node_id] or 0) + 1
 end
 
 function Map:bump_route_version(from_id, to_id)
-    local rv = self.route_version
+    local rv = get_map_state(self).route_version
     local row = rv[from_id]
     if not row then
         row = {}
@@ -685,8 +699,8 @@ end
 
 function Map:compute_path_version(node_ids)
     local maxv = 0
-    local nv = self.node_version
-    local rv = self.route_version
+    local nv = get_map_state(self).node_version
+    local rv = get_map_state(self).route_version
 
     for i = 1, #node_ids do
         local id = node_ids[i]
@@ -710,8 +724,8 @@ function Map:is_path_cache_valid(cache)
     local nv  = cache.node_versions
     local rv  = cache.route_versions
 
-    local current_nv = self.node_version
-    local current_rv = self.route_version
+    local current_nv = get_map_state(self).node_version
+    local current_rv = get_map_state(self).route_version
 
     for i = 1, #ids do
         if (current_nv[ids[i]] or 0) ~= (nv[i] or 0) then
@@ -739,12 +753,12 @@ end
 function Map:update_node_position(node_id, position)
     assert(node_id, "You must provide a node id")
     assert(position, "You must provide a position")
-    local map_node_list = self.map_node_list
+    local map_node_list = get_map_state(self).map_node_list
     assert(map_node_list[node_id], ("Unknown node id %s"):format(tostring(node_id)))
 
     map_node_list[node_id].position = vmath.vector3(position.x, position.y, 0)
     local neighbors = map_node_list[node_id].neighbor_id
-    local map_route_list = self.map_route_list
+    local map_route_list = get_map_state(self).map_route_list
 
     for i = 1, #neighbors do
         local a_id = node_id
@@ -789,7 +803,7 @@ function Map:update_node_position(node_id, position)
 end
 
 local function map_update_node_type(map, node_id)
-    local map_node_list = map.map_node_list
+    local map_node_list = get_map_state(map).map_node_list
     local neighbors = map_node_list[node_id].neighbor_id
     local n = #neighbors
     if n == 0 then
@@ -802,8 +816,8 @@ local function map_update_node_type(map, node_id)
 end
 
 local function map_add_oneway_route(map, source_id, destination_id, route_info)
-    local map_node_list  = map.map_node_list
-    local map_route_list = map.map_route_list
+    local map_node_list  = get_map_state(map).map_node_list
+    local map_route_list = get_map_state(map).map_route_list
 
     local routes_from = map_route_list[source_id]
     if not routes_from then
@@ -875,8 +889,8 @@ local function map_add_oneway_route(map, source_id, destination_id, route_info)
 end
 
 local function map_remove_oneway_route(map, source_id, destination_id)
-    local map_node_list  = map.map_node_list
-    local map_route_list = map.map_route_list
+    local map_node_list  = get_map_state(map).map_node_list
+    local map_route_list = get_map_state(map).map_route_list
 
     local routes_from = map_route_list[source_id]
     if not routes_from then return end
@@ -935,8 +949,8 @@ function Map:create_node(position, key, groups)
     ------------------------------------------------------------------
     -- Generate node id
     ------------------------------------------------------------------
-    self.map_node_id_iter = self.map_node_id_iter + 1
-    local id = self.map_node_id_iter
+    get_map_state(self).map_node_id_iter = get_map_state(self).map_node_id_iter + 1
+    local id = get_map_state(self).map_node_id_iter
 
     ------------------------------------------------------------------
     -- Auto-generate key if missing
@@ -953,8 +967,8 @@ function Map:create_node(position, key, groups)
     ------------------------------------------------------------------
     -- Register node
     ------------------------------------------------------------------
-    self.map_node_list[id] = node
-    self.node_registry[key] = node
+    get_map_state(self).map_node_list[id] = node
+    get_map_state(self).node_registry[key] = node
 
     ------------------------------------------------------------------
     -- Assign groups
@@ -964,8 +978,8 @@ function Map:create_node(position, key, groups)
             local group = groups[i]
             node.groups[group] = true
 
-            self.nodes_by_group[group] = self.nodes_by_group[group] or {}
-            self.nodes_by_group[group][id] = true
+            get_map_state(self).nodes_by_group[group] = get_map_state(self).nodes_by_group[group] or {}
+            get_map_state(self).nodes_by_group[group][id] = true
         end
     end
 
@@ -990,10 +1004,10 @@ end
 function Map:add_node(position)
     assert(position, "You must provide a position")
 
-    self.map_node_id_iter = self.map_node_id_iter + 1
-    local node_id = self.map_node_id_iter
+    get_map_state(self).map_node_id_iter = get_map_state(self).map_node_id_iter + 1
+    local node_id = get_map_state(self).map_node_id_iter
 
-    self.map_node_list[node_id] = {
+    get_map_state(self).map_node_list[node_id] = {
         position    = vmath.vector3(position.x, position.y, 0),
         type        = NODETYPE.SINGLE,
         neighbor_id = {},
@@ -1006,7 +1020,7 @@ end
 function Map:add_route(source_id, destination_id, is_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
-    local map_node_list = self.map_node_list
+    local map_node_list = get_map_state(self).map_node_list
     assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
     assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
@@ -1027,7 +1041,7 @@ end
 function Map:remove_route(source_id, destination_id, is_remove_one_way)
     assert(source_id, "You must provide a source id")
     assert(destination_id, "You must provide a destination id")
-    local map_node_list = self.map_node_list
+    local map_node_list = get_map_state(self).map_node_list
     assert(map_node_list[source_id], ("Unknown source id %s"):format(tostring(source_id)))
     assert(map_node_list[destination_id], ("Unknown destination id %s"):format(tostring(destination_id)))
 
@@ -1048,8 +1062,8 @@ end
 function Map:remove_node(node_id)
     assert(node_id, "You must provide a node id")
 
-    local map_node_list  = self.map_node_list
-    local map_route_list = self.map_route_list
+    local map_node_list  = get_map_state(self).map_node_list
+    local map_route_list = get_map_state(self).map_route_list
 
     local node = map_node_list[node_id]
     assert(node, ("Unknown node id %s"):format(tostring(node_id)))
@@ -1059,11 +1073,11 @@ function Map:remove_node(node_id)
     ------------------------------------------------------------------
     if node.groups then
         for group in pairs(node.groups) do
-            local g = self.nodes_by_group[group]
+            local g = get_map_state(self).nodes_by_group[group]
             if g then
                 g[node_id] = nil
                 if next(g) == nil then
-                    self.nodes_by_group[group] = nil
+                    get_map_state(self).nodes_by_group[group] = nil
                 end
             end
         end
@@ -1073,7 +1087,7 @@ function Map:remove_node(node_id)
     -- 2. Remove from node registry
     ------------------------------------------------------------------
     if node.key then
-        self.node_registry[node.key] = nil
+        get_map_state(self).node_registry[node.key] = nil
     end
 
     ------------------------------------------------------------------
@@ -1111,7 +1125,7 @@ function Map:remove_node(node_id)
     ------------------------------------------------------------------
     -- 5. Clear pathfinder cache (paths may contain this node)
     ------------------------------------------------------------------
-    self.pathfinder_cache = {}
+    get_map_state(self).pathfinder_cache = {}
 end
 
 ----------------------------------------------------------------------
@@ -1119,8 +1133,8 @@ end
 ----------------------------------------------------------------------
 
 function Map:calculate_to_nearest_route(position)
-    local map_node_list  = self.map_node_list
-    local map_route_list = self.map_route_list
+    local map_node_list  = get_map_state(self).map_node_list
+    local map_route_list = get_map_state(self).map_route_list
 
     local min_from, min_to
     local min_x, min_y
@@ -1227,8 +1241,8 @@ end
 -- Pathfinding
 ----------------------------------------------------------------------
 function Map:calculate_path(start_id, finish_id)
-    local map_node_list  = self.map_node_list
-    local map_route_list = self.map_route_list
+    local map_node_list  = get_map_state(self).map_node_list
+    local map_route_list = get_map_state(self).map_route_list
 
     local previous  = {}
     local distances = {}
@@ -1293,11 +1307,11 @@ function Map:calculate_path(start_id, finish_id)
 end
 
 function Map:fetch_path(from_id, to_id)
-    local pathfinder_cache = self.pathfinder_cache
+    local pathfinder_cache = get_map_state(self).pathfinder_cache
 
     if from_id == to_id then
         local ids = { from_id }
-        local node_versions = { self.node_version[from_id] or 0 }
+        local node_versions = { get_map_state(self).node_version[from_id] or 0 }
         local route_versions = {}
         return {
             distance       = 0,
@@ -1358,13 +1372,13 @@ function Map:fetch_path(from_id, to_id)
 
             for j = 1, sub_len do
                 local id = node_ids[j]
-                node_versions[j] = self.node_version[id] or 0
+                node_versions[j] = get_map_state(self).node_version[id] or 0
             end
 
             for j = 1, sub_len - 1 do
                 local a = node_ids[j]
                 local b = node_ids[j + 1]
-                local rv_row = self.route_version[a]
+                local rv_row = get_map_state(self).route_version[a]
                 route_versions[j] = rv_row and rv_row[b] or 0
             end
 
@@ -1445,7 +1459,7 @@ function Map:move_internal_initialize(source_position, move_data)
     end
 
     local from_path, to_path
-    local map_route_list = self.map_route_list
+    local map_route_list = get_map_state(self).map_route_list
 
     if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
         from_path = self:fetch_path(near_result.route_from_id,
@@ -1467,7 +1481,7 @@ function Map:move_internal_initialize(source_position, move_data)
         position_list[pos_count] = near_result.position_on_route
     end
 
-    local map_node_list = self.map_node_list
+    local map_node_list = get_map_state(self).map_node_list
 
     if from_path or to_path then
         local from_distance = huge
@@ -1692,16 +1706,16 @@ function Map:player_update(self_player, speed)
 
         if cfg.collision_groups then
             for _, group in ipairs(cfg.collision_groups) do
-                local g = map.players_by_group[group]
+                local g = get_map_state(map).players_by_group[group]
                 if g then
                     for key in pairs(g) do
                         count = count + 1
-                        candidates[count] = map.players[key]
+                        candidates[count] = get_map_state(map).players[key]
                     end
                 end
             end
         else
-            for _, p in pairs(map.players) do
+            for _, p in pairs(get_map_state(map).players) do
                 count = count + 1
                 candidates[count] = p
             end
@@ -1981,7 +1995,7 @@ function Map:player_update(self_player, speed)
     local threshold_sq = threshold * threshold
 
     local last_index = #path
-    local map_node_list = self.map_node_list
+    local map_node_list = get_map_state(self).map_node_list
 
     for i = path_index, last_index do
         local target = path[i]
@@ -2095,7 +2109,7 @@ function Map:debug_draw_map_nodes(is_show_ids, is_show_meta)
     -- FIX: Use fixed pixel offsets so text never overlaps
     local text_dy = vmath.vector3(0, -14, 0)    -- 14px down per line
 
-    for node_id, node in pairs(self.map_node_list) do
+    for node_id, node in pairs(get_map_state(self).map_node_list) do
         local p = node.position
 
         ------------------------------------------------------------------
@@ -2174,8 +2188,8 @@ function Map:debug_draw_map_routes()
     local a3 = vmath.vector3(-arrow,  arrow, 0)
     local a4 = vmath.vector3(-arrow, -arrow, 0)
 
-    local map_node_list  = self.map_node_list
-    local map_route_list = self.map_route_list
+    local map_node_list  = get_map_state(self).map_node_list
+    local map_route_list = get_map_state(self).map_route_list
 
     for from_id, routes in pairs(map_route_list) do
         local p1 = map_node_list[from_id].position
@@ -2242,8 +2256,8 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
             local result = map:calculate_to_nearest_route(self_player.current_position)
             if result then
                 local proj = result.position_on_route
-                local from_pos = map.map_node_list[result.route_from_id].position
-                local to_pos   = map.map_node_list[result.route_to_id].position
+                local from_pos = get_map_state(map).map_node_list[result.route_from_id].position
+                local to_pos   = get_map_state(map).map_node_list[result.route_to_id].position
 
                 msg.post("@render:", "draw_line", {
                     start_point = from_pos,
@@ -2334,8 +2348,8 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
             local result = map:calculate_to_nearest_route(self_player.current_position)
             if result then
                 local proj = result.position_on_route
-                local from_pos = map.map_node_list[result.route_from_id].position
-                local to_pos   = map.map_node_list[result.route_to_id].position
+                local from_pos = get_map_state(map).map_node_list[result.route_from_id].position
+                local to_pos   = get_map_state(map).map_node_list[result.route_to_id].position
 
                 msg.post("@render:", "draw_line", { start_point = from_pos, end_point = to_pos, color = vmath.vector4(1,1,0,1) })
                 msg.post("@render:", "draw_line", { start_point = self_player.current_position, end_point = proj, color = vmath.vector4(1,1,0,1) })
@@ -2568,7 +2582,7 @@ function Map:normalize_destination_list(list)
             -- do nothing
         elseif t == "string" or t == "userdata" then
             -- treat as node key
-            local node = self.node_registry[ref]
+            local node = get_map_state(self).node_registry[ref]
             assert(node, "Unknown node key in destination_list: " .. tostring(ref))
             list[i] = node.id
         elseif t == "table" and ref.id then
@@ -2611,7 +2625,7 @@ function Map:get_nearest_node_from_groups(position, groups)
     local candidates = {}
 
     for _, group in ipairs(group_list) do
-        local g = self.nodes_by_group[group]
+        local g = get_map_state(self).nodes_by_group[group]
         if g then
             for node_id in pairs(g) do
                 candidates[#candidates + 1] = node_id
@@ -2637,7 +2651,7 @@ function Map:get_nearest_node_from_groups(position, groups)
         local path_a = self:fetch_path(start_a, target)
         if path_a then
             local dist = path_a.distance
-                + distance(position, self.map_node_list[start_a].position)
+                + distance(position, get_map_state(self).map_node_list[start_a].position)
 
             if dist < best_dist then
                 best_dist = dist
@@ -2649,7 +2663,7 @@ function Map:get_nearest_node_from_groups(position, groups)
         local path_b = self:fetch_path(start_b, target)
         if path_b then
             local dist = path_b.distance
-                + distance(position, self.map_node_list[start_b].position)
+                + distance(position, get_map_state(self).map_node_list[start_b].position)
 
             if dist < best_dist then
                 best_dist = dist
@@ -2682,7 +2696,7 @@ function Map:get_random_node_from_groups(groups)
 
     for i = 1, #group_list do
         local group = group_list[i]
-        local g = self.nodes_by_group[group]
+        local g = get_map_state(self).nodes_by_group[group]
 
         if g then
             for node_id in pairs(g) do
@@ -2721,7 +2735,7 @@ function Map:create_player(key, groups, initial_position,
                            initial_face_vector,
                            config)
     assert(key, "Player key required")
-    assert(not self.players[key], "Player with this key already exists")
+    assert(not get_map_state(self).players[key], "Player with this key already exists")
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
@@ -2766,12 +2780,12 @@ function Map:create_player(key, groups, initial_position,
     local player = setmetatable(move_data, Player)
 
     -- Assign unique id per map
-    self.player_id_iter = self.player_id_iter + 1
-    player.id = self.player_id_iter
+    get_map_state(self).player_id_iter = get_map_state(self).player_id_iter + 1
+    player.id = get_map_state(self).player_id_iter
     player.key = key
 
     -- Track by key
-    self.players[key] = player
+    get_map_state(self).players[key] = player
 
     -- Track groups
     player.groups = {}
