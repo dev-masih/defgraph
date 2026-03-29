@@ -1841,14 +1841,13 @@ function Map:player_update(self_player, speed)
         end
 
         local behavior_id = self_player.config.collision_behavior or M.CollisionBehavior.Balanced
-        local preset = COLLISION_BEHAVIOR_PRESETS[behavior_id] or COLLISION_BEHAVIOR_PRESETS[M.CollisionBehavior.Balanced]
+        local preset = COLLISION_BEHAVIOR_PRESETS[behavior_id]
 
         local cf = self_player.current_face_vector
         local rx = cf.x + (dir_x - cf.x) * preset.dir_smoothing
         local ry = cf.y + (dir_y - cf.y) * preset.dir_smoothing
 
         local angle = math.atan2(ry, rx)
-
         local prev_angle = self_player._prev_angle or angle
         local diff = angle - prev_angle
 
@@ -1856,8 +1855,8 @@ function Map:player_update(self_player, speed)
         if diff < -3.14159 then diff = diff + 6.28318 end
 
         angle = prev_angle + diff * 0.25
-
         self_player._prev_angle = angle
+
         self_player.current_face_vector.x = rx
         self_player.current_face_vector.y = ry
 
@@ -1882,7 +1881,7 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- Unified lane + collision engine (inside movement loop)
+    -- Movement loop
     ----------------------------------------------------------------------
     local threshold = self_player.config.gameobject_threshold + 1
     local threshold_sq = threshold * threshold
@@ -1905,11 +1904,12 @@ function Map:player_update(self_player, speed)
             local base_dir_y = vy * inv_len
 
             ------------------------------------------------------------------
-            -- LANE + COLLISION UNIFIED ADJUSTMENT
+            -- Unified lane + collision engine
             ------------------------------------------------------------------
             local dir_x, dir_y = base_dir_x, base_dir_y
+
             local behavior_id = self_player.config.collision_behavior or M.CollisionBehavior.Balanced
-            local preset = COLLISION_BEHAVIOR_PRESETS[behavior_id] or COLLISION_BEHAVIOR_PRESETS[M.CollisionBehavior.Balanced]
+            local preset = COLLISION_BEHAVIOR_PRESETS[behavior_id]
 
             local px = self_player.current_position.x
             local py = self_player.current_position.y
@@ -1939,7 +1939,7 @@ function Map:player_update(self_player, speed)
             end
 
             ------------------------------------------------------------------
-            -- Lane state + recentering (R1: after lane switch)
+            -- Lane state + recentering (R1)
             ------------------------------------------------------------------
             if route_info then
                 ensure_player_lane_state(self_player, route_info)
@@ -1948,9 +1948,11 @@ function Map:player_update(self_player, speed)
                     local lc  = route_info.lane_count or 1
                     local lof = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
                     local center = compute_lane_center_offset(self_player._lane_index or 1, lc, lof)
+
                     self_player._lane_target_offset =
                         self_player._lane_target_offset +
                         (center - self_player._lane_target_offset) * preset.path_recentering
+
                     self_player._lane_just_switched = false
                 end
 
@@ -1970,14 +1972,10 @@ function Map:player_update(self_player, speed)
             end
 
             ------------------------------------------------------------------
-            -- Collision disabled → skip detection, steering, queueing
+            -- Collision disabled → skip avoidance
             ------------------------------------------------------------------
-            if not self_player.config.collision_enabled then
-                -- keep dir_x, dir_y, speed as is
-            else
-                ------------------------------------------------------------------
-                -- Detection + predictive/reactive steering + queueing
-                ------------------------------------------------------------------
+            if self_player.config.collision_enabled then
+
                 local players = state.players
 
                 local predictive_force_x = 0
@@ -1990,8 +1988,28 @@ function Map:player_update(self_player, speed)
                 for _, other in pairs(players) do
                     if other ~= self_player then
 
-                        if my_group == nil or (other.config and other.config.collision_groups and my_group[other.config.collision_groups]) then
+                        ------------------------------------------------------------------
+                        -- GROUP FILTER (list vs list)
+                        ------------------------------------------------------------------
+                        local other_group_list = other.config and other.config.collision_groups
+                        local group_ok = false
 
+                        if my_group == nil then
+                            group_ok = true
+                        elseif other_group_list then
+                            for i = 1, #my_group do
+                                local g = my_group[i]
+                                for j = 1, #other_group_list do
+                                    if other_group_list[j] == g then
+                                        group_ok = true
+                                        break
+                                    end
+                                end
+                                if group_ok then break end
+                            end
+                        end
+
+                        if group_ok then
                             local ox = other.current_position.x
                             local oy = other.current_position.y
 
@@ -2012,7 +2030,10 @@ function Map:player_update(self_player, speed)
                                     density_count = density_count + 1
 
                                     local dot = dx * dir_x + dy * dir_y
-                                    if dot > 0 then
+                                    local is_two_way_single_lane = (lane_count == 1)
+
+                                    if is_two_way_single_lane or dot > 0 then
+
                                         local odist = math.sqrt(odist_sq)
 
                                         local lookahead = preset.lookahead_min +
@@ -2033,6 +2054,7 @@ function Map:player_update(self_player, speed)
                                             if other._last_speed and other._last_speed < speed then
                                                 slower_ahead = true
                                             end
+
                                         elseif odist < predictive_zone then
                                             blocked_ahead = true
                                             predictive_force_x = predictive_force_x - ndx * preset.predictive_scale
@@ -2046,7 +2068,7 @@ function Map:player_update(self_player, speed)
                 end
 
                 ------------------------------------------------------------------
-                -- Density-based slowdown
+                -- Density slowdown
                 ------------------------------------------------------------------
                 if density_count > 0 then
                     local density_factor = 1 - math.min(1, density_count * preset.density_slow_factor * 0.1)
@@ -2054,17 +2076,14 @@ function Map:player_update(self_player, speed)
                 end
 
                 ------------------------------------------------------------------
-                -- Queueing (Q1: only when blocked)
+                -- Queueing (Q1)
                 ------------------------------------------------------------------
                 if blocked_ahead then
-                    local queue_spacing = base_radius * preset.queue_spacing_factor
-                    if queue_spacing > 0 then
-                        speed = speed * preset.queue_slow
-                    end
+                    speed = speed * preset.queue_slow
                 end
 
                 ------------------------------------------------------------------
-                -- Combine base + predictive + reactive (F2: weighted blend)
+                -- Combine steering (F2)
                 ------------------------------------------------------------------
                 local base_weight = math.max(0, 1 - preset.predictive_scale - preset.reactive_scale)
                 local final_x = base_dir_x * base_weight + predictive_force_x + reactive_force_x
@@ -2083,7 +2102,7 @@ function Map:player_update(self_player, speed)
                 dir_y = final_y
 
                 ------------------------------------------------------------------
-                -- Lane switching if blocked
+                -- Lane switching
                 ------------------------------------------------------------------
                 if blocked_ahead and route_info then
                     attempt_lane_switch(self, self_player, route_info, blocked_ahead, slower_ahead, speed)
@@ -2099,7 +2118,7 @@ function Map:player_update(self_player, speed)
             end
 
             ------------------------------------------------------------------
-            -- Apply rotation smoothing
+            -- Rotation smoothing
             ------------------------------------------------------------------
             if self_player.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
@@ -2151,6 +2170,7 @@ function Map:player_update(self_player, speed)
                         self_player.destination_index = self_player.destination_index + 1
                         self_player = self:move_internal_initialize(self_player.current_position, self_player)
                     end
+
                 elseif rt == M.ROUTETYPE.SHUFFLE then
                     if count > 1 then
                         local new_id = self_player.destination_index
@@ -2160,6 +2180,7 @@ function Map:player_update(self_player, speed)
                         self_player.destination_index = new_id
                         self_player = self:move_internal_initialize(self_player.current_position, self_player)
                     end
+
                 elseif rt == M.ROUTETYPE.CYCLE then
                     if self_player.destination_index < count then
                         self_player.destination_index = self_player.destination_index + 1
