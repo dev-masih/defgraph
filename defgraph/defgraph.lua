@@ -2562,6 +2562,88 @@ function Player:remove_from_group(group)
     self.map:remove_player_from_group(self.key, group)
 end
 
+----------------------------------------------------------------------
+-- Player: Configuration & State Update Helpers
+----------------------------------------------------------------------
+
+function Player:update_config(new_config)
+    assert(new_config, "Player:update_config: new_config is required")
+
+    -- If it's not already a PlayerConfig object, create one
+    if type(new_config) ~= "table" or getmetatable(new_config) ~= PlayerConfig then
+        new_config = PlayerConfig.new(new_config)
+    end
+
+    new_config:validate()
+
+    -- Update config
+    self.config = new_config
+
+    -- Clear collision-related caches because collision_groups or behavior may have changed
+    self._scratch_candidates = nil
+    self._smooth_dir_x = nil
+    self._smooth_dir_y = nil
+    self._smooth_speed = nil
+    self._last_dir_x = nil
+    self._last_dir_y = nil
+    self._last_speed = nil
+
+    -- Invalidate map collision cache so other players see the change immediately
+    if self.map and self.config.collision_groups then
+        for _, group in ipairs(self.config.collision_groups) do
+            self.map:invalidate_collision_cache(group)
+        end
+    else
+        self.map:invalidate_collision_cache()  -- clear all
+    end
+end
+
+function Player:update_destinations(destination_list, route_type)
+    assert(destination_list, "Player:update_destinations: destination_list is required")
+
+    route_type = default(route_type, self.route_type or M.ROUTETYPE.ONETIME)
+
+    -- Normalize and replace destination list
+    self.destination_list = self.map:normalize_destination_list(destination_list)
+
+    -- Reset index and direction
+    local count = #self.destination_list
+    self.destination_index = 1
+    self.patrol_direction = 1
+
+    if route_type == M.ROUTETYPE.SHUFFLE and count > 1 then
+        self.destination_index = math.random(count)
+    end
+
+    self.route_type = route_type
+
+    -- Force path recalculation from current position
+    self = self.map:move_internal_initialize(self.current_position, self)
+end
+
+function Player:update_face_vector(face_vector)
+    if face_vector then
+        self.current_face_vector = vmath.vector3(face_vector.x, face_vector.y, 0)
+        self.initial_angle = atan2(face_vector.y, face_vector.x)
+    else
+        self.current_face_vector = nil
+        self.initial_angle = nil
+    end
+
+    -- Clear smoothing state
+    self._prev_angle = nil
+end
+
+function Player:teleport(position)
+    assert(position and type(position) == "userdata",
+           "Player:teleport: position must be a vmath.vector3")
+
+    self.current_position = vmath.vector3(position.x, position.y, 0)
+
+    -- Force path recalculation from new position
+    self = self.map:move_internal_initialize(self.current_position, self)
+end
+
 function Player:destroy()
     self.map = nil
     self.path = {}
@@ -2570,6 +2652,7 @@ function Player:destroy()
     self._prev_angle = nil
     self.groups = nil
     self.patrol_direction = nil
+    self.destination_list = nil
 
     -- scratch / debug fields (safe to clear)
     self._scratch_candidates = nil
@@ -2783,7 +2866,7 @@ function Map:create_player(key, groups, initial_position,
         path_node_ids                         = {},
         path_version                          = 0,
         patrol_direction                      = 1,  -- used for PATROL route type
- 
+
         current_position                      = initial_position,
         current_face_vector                   = initial_face_vector,
         initial_angle                         = initial_angle,
