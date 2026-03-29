@@ -1389,15 +1389,15 @@ local function process_path_curvature(before, current, after, roundness,
     end
 
     if roundness ~= 1 then
-        process_path_curvature(Q_before, R_before, Q_after, roundness - 1,
+        local _, Qb, _ = process_path_curvature(Q_before, R_before, Q_after, roundness - 1,
                                path_curve_tightness,
                                path_curve_max_distance_from_corner,
                                out_list)
-        process_path_curvature(R_before, Q_after, R_after, roundness - 1,
+        local _, _, Ra = process_path_curvature(R_before, Q_after, R_after, roundness - 1,
                                path_curve_tightness,
                                path_curve_max_distance_from_corner,
                                out_list)
-        return out_list, Q_before, R_after
+        return out_list, Qb, Ra
     else
         out_list[#out_list + 1] = R_before
         out_list[#out_list + 1] = Q_after
