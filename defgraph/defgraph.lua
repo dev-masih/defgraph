@@ -217,6 +217,9 @@ function PlayerConfig:validate()
     assert(type(self.path_curve_roundness) == "number",
         "PlayerConfig: path_curve_roundness must be a number")
 
+    assert(self.path_curve_roundness >= 0 and self.path_curve_roundness <= 12,
+        "PlayerConfig: path_curve_roundness must be between 0 and 12")
+
     assert(type(self.path_curve_max_distance_from_corner) == "number",
         "PlayerConfig: path_curve_max_distance_from_corner must be a number")
 
@@ -366,6 +369,7 @@ function Map.new()
         map_node_list    = {}, -- [node_id] = Node
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len }
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] }
+        collision_candidate_cache = {},   -- group -> list of players
 
         -- node registry / groups
         node_registry   = {},  -- key -> Node
@@ -389,6 +393,13 @@ end
 ----------------------------------------------------------------------
 -- Map: node registry and groups
 ----------------------------------------------------------------------
+function Map:invalidate_collision_cache(group)
+    if group then
+        get_map_state(self).collision_candidate_cache[group] = nil
+    else
+        get_map_state(self).collision_candidate_cache = {}
+    end
+end
 
 function Map:get_node_by_id(id)
     return get_map_state(self).map_node_list[id]
@@ -534,6 +545,8 @@ function Map:add_player_to_group(key, group)
     get_map_state(self).players_by_group[group][key] = true
     player.groups[group] = true
 
+    self:invalidate_collision_cache(group)
+
     return true
 end
 
@@ -552,6 +565,8 @@ function Map:remove_player_from_group(key, group)
             get_map_state(self).players_by_group[group] = nil
         end
     end
+
+    self:invalidate_collision_cache(group)
 end
 
 function Map:destroy()
@@ -1194,6 +1209,7 @@ end
 ----------------------------------------------------------------------
 -- Pathfinding
 ----------------------------------------------------------------------
+-- Note: path[1].distance = total distance from start to end (remaining distance decreases)
 function Map:calculate_path(start_id, finish_id)
     local map_node_list  = get_map_state(self).map_node_list
     local map_route_list = get_map_state(self).map_route_list
@@ -1646,6 +1662,11 @@ function Map:player_update(self_player, speed)
         local strongest_predictive = 0
         local strongest_queueing   = 0
 
+        local density_radius = radius * preset.density_radius_factor
+        local density_radius_sq = density_radius * density_radius
+        local neighbor_count = 0
+        local density_sum = 0
+
         -- dynamic lookahead
         local lookahead = preset.lookahead_min + speed * preset.lookahead_speed_factor
         if lookahead > preset.lookahead_max then
@@ -1663,23 +1684,31 @@ function Map:player_update(self_player, speed)
         local count = 0
 
         -- clear previous contents
-        local c_len = #candidates
-        for i = 1, c_len do
-            candidates[i] = nil
-        end
+        for i = 1, #candidates do candidates[i] = nil end
+
+        local map_state = get_map_state(map)
 
         if cfg.collision_groups then
             for _, group in ipairs(cfg.collision_groups) do
-                local g = get_map_state(map).players_by_group[group]
-                if g then
-                    for key in pairs(g) do
-                        count = count + 1
-                        candidates[count] = get_map_state(map).players[key]
+                local cached = map_state.collision_candidate_cache[group]
+                if not cached then
+                    cached = {}
+                    local g = map_state.players_by_group[group]
+                    if g then
+                        for key in pairs(g) do
+                            cached[#cached + 1] = map_state.players[key]
+                        end
                     end
+                    map_state.collision_candidate_cache[group] = cached
+                end
+                for j = 1, #cached do
+                    count = count + 1
+                    candidates[count] = cached[j]
                 end
             end
         else
-            for _, p in pairs(get_map_state(map).players) do
+            -- full list fallback
+            for _, p in pairs(map_state.players) do
                 count = count + 1
                 candidates[count] = p
             end
@@ -1817,29 +1846,15 @@ function Map:player_update(self_player, speed)
                         end
                     end
                 end
-            end
-        end
 
-        -- 4. Density-based slowdown
-        local density_radius = radius * preset.density_radius_factor
-        local density_radius_sq = density_radius * density_radius
+                -- Density accumulation (merged)
+                local dx_density = px - ox
+                local dy_density = py - oy
+                local dist_density_sq = dx_density*dx_density + dy_density*dy_density
 
-        local neighbor_count = 0
-        local density_sum = 0
-
-        for i = 1, count do
-            local other = candidates[i]
-            if other ~= self_player then
-                local ox = other.current_position.x
-                local oy = other.current_position.y
-
-                local dx = px - ox
-                local dy = py - oy
-                local dist_sq = dx*dx + dy*dy
-
-                if dist_sq < density_radius_sq then
+                if dist_density_sq < density_radius_sq then
                     neighbor_count = neighbor_count + 1
-                    density_sum = density_sum + (1 - dist_sq / density_radius_sq)
+                    density_sum = density_sum + (1 - dist_density_sq / density_radius_sq)
                 end
             end
         end
@@ -2544,25 +2559,26 @@ end
 function Map:normalize_destination_list(list)
     assert(type(list) == "table", "destination_list must be a table")
 
+    local normalized = {}
     for i = 1, #list do
         local ref = list[i]
         local t = type(ref)
 
         if t == "number" then
-            -- already a node ID
-            -- do nothing
+            normalized[i] = ref
         elseif t == "string" or t == "userdata" then
             -- treat as node key
             local node = get_map_state(self).node_registry[ref]
             assert(node, "Unknown node key in destination_list: " .. tostring(ref))
-            list[i] = node.id
+            normalized[i] = node.id
         elseif t == "table" and ref.id then
             -- node object
-            list[i] = ref.id
+            normalized[i] = ref.id
         else
             error("Invalid destination reference at index " .. i)
         end
     end
+    return normalized
 end
 
 function Map:get_nearest_node_from_groups(position, groups)
@@ -2718,7 +2734,7 @@ function Map:create_player(key, groups, initial_position,
     end
 
     config:validate()
-    self:normalize_destination_list(destination_list)
+    destination_list = self:normalize_destination_list(destination_list)
 
     local destination_id = 1
     local dest_count     = #destination_list
