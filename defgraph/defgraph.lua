@@ -1811,7 +1811,7 @@ end
 -- Player update (map-bound)
 ----------------------------------------------------------------------
 function Map:player_update(self_player, speed)
-    assert(self_player, "You must provide defold move data")
+    assert(self_player, "You must provide defgraph move data")
 
     local state = get_map_state(self)
     local path       = self_player.path
@@ -1840,9 +1840,12 @@ function Map:player_update(self_player, speed)
             return nil
         end
 
+        local behavior_id = self_player.config.collision_behavior or M.CollisionBehavior.Balanced
+        local preset = COLLISION_BEHAVIOR_PRESETS[behavior_id] or COLLISION_BEHAVIOR_PRESETS[M.CollisionBehavior.Balanced]
+
         local cf = self_player.current_face_vector
-        local rx = cf.x + (dir_x - cf.x) * (0.2 * speed)
-        local ry = cf.y + (dir_y - cf.y) * (0.2 * speed)
+        local rx = cf.x + (dir_x - cf.x) * preset.dir_smoothing
+        local ry = cf.y + (dir_y - cf.y) * preset.dir_smoothing
 
         local angle = math.atan2(ry, rx)
 
@@ -1852,11 +1855,7 @@ function Map:player_update(self_player, speed)
         if diff > 3.14159 then diff = diff - 6.28318 end
         if diff < -3.14159 then diff = diff + 6.28318 end
 
-        if math.abs(diff) < 0.02 then
-            angle = prev_angle
-        else
-            angle = prev_angle + diff * 0.25
-        end
+        angle = prev_angle + diff * 0.25
 
         self_player._prev_angle = angle
         self_player.current_face_vector.x = rx
@@ -1883,103 +1882,7 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- Simple lane-aware collision + overtaking
-    ----------------------------------------------------------------------
-    local function lane_aware_adjustment(dir_x, dir_y, speed)
-        local px = self_player.current_position.x
-        local py = self_player.current_position.y
-
-        local blocked_ahead = false
-        local slower_ahead  = false
-
-        local base_radius = self_player.config.collision_radius or 0
-
-        local players = state.players
-        for _, other in pairs(players) do
-            if other ~= self_player then
-                local ox = other.current_position.x
-                local oy = other.current_position.y
-
-                local dx = ox - px
-                local dy = oy - py
-                local dist_sq = dx*dx + dy*dy
-
-                if dist_sq > 0 then
-                    ------------------------------------------------------------
-                    -- LANE‑AWARE DETECTION RADIUS
-                    ------------------------------------------------------------
-                    local my_lane    = self_player._lane_index or 1
-                    local other_lane = other._lane_index or 1
-                    local lane_delta = math.abs(my_lane - other_lane)
-
-                    -- lane_offset depends on the current route
-                    local lane_offset = DEFAULT_ROUTE_LANE_OFFSET
-                    do
-                        local ids = self_player.path_node_ids
-                        if ids and #ids >= 2 then
-                            local from_id = ids[1]
-                            local to_id   = ids[2]
-                            local routes_from = state.map_route_list[from_id]
-                            local route_info  = routes_from and routes_from[to_id]
-                            if route_info then
-                                lane_offset = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
-                            end
-                        end
-                    end
-
-                    -- expand detection radius based on lane separation
-                    local effective_radius = base_radius + lane_delta * lane_offset
-                    local effective_radius_sq = effective_radius * effective_radius
-
-                    ------------------------------------------------------------
-                    -- DETECTION USING EXPANDED RADIUS
-                    ------------------------------------------------------------
-                    if dist_sq < effective_radius_sq then
-                        local dot = dx * dir_x + dy * dir_y
-                        if dot > 0 then
-                            local dist = math.sqrt(dist_sq)
-
-                            -- blocked if too close
-                            if dist < effective_radius * 0.6 then
-                                blocked_ahead = true
-
-                                if other._last_speed and other._last_speed < speed then
-                                    slower_ahead = true
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
-        -- decrement cooldown
-        if self_player._lane_switch_cooldown and self_player._lane_switch_cooldown > 0 then
-            self_player._lane_switch_cooldown = self_player._lane_switch_cooldown - 1
-        end
-
-        -- try lane switch if needed
-        local ids = self_player.path_node_ids
-        if ids and #ids >= 2 then
-            local from_id = ids[1]
-            local to_id   = ids[2]
-            local routes_from = state.map_route_list[from_id]
-            local route_info  = routes_from and routes_from[to_id]
-            if route_info then
-                attempt_lane_switch(self, self_player, route_info, blocked_ahead, slower_ahead, speed)
-            end
-        end
-
-        -- small speed reduction if blocked
-        if blocked_ahead then
-            speed = speed * 0.8
-        end
-
-        return dir_x, dir_y, speed
-    end
-
-    ----------------------------------------------------------------------
-    -- Movement loop
+    -- Unified lane + collision engine (inside movement loop)
     ----------------------------------------------------------------------
     local threshold = self_player.config.gameobject_threshold + 1
     local threshold_sq = threshold * threshold
@@ -1998,15 +1901,213 @@ function Map:player_update(self_player, speed)
             self_player.path_index = i
 
             local inv_len = 1 / math.sqrt(dist_sq)
-            local dir_x = vx * inv_len
-            local dir_y = vy * inv_len
+            local base_dir_x = vx * inv_len
+            local base_dir_y = vy * inv_len
 
-            dir_x, dir_y, speed = lane_aware_adjustment(dir_x, dir_y, speed)
+            ------------------------------------------------------------------
+            -- LANE + COLLISION UNIFIED ADJUSTMENT
+            ------------------------------------------------------------------
+            local dir_x, dir_y = base_dir_x, base_dir_y
+            local behavior_id = self_player.config.collision_behavior or M.CollisionBehavior.Balanced
+            local preset = COLLISION_BEHAVIOR_PRESETS[behavior_id] or COLLISION_BEHAVIOR_PRESETS[M.CollisionBehavior.Balanced]
 
+            local px = self_player.current_position.x
+            local py = self_player.current_position.y
+
+            local blocked_ahead = false
+            local slower_ahead  = false
+
+            local base_radius = self_player.config.collision_radius or 0
+            local my_group    = self_player.config.collision_groups or nil
+
+            local lane_offset = DEFAULT_ROUTE_LANE_OFFSET
+            local lane_count  = 1
+            local route_info  = nil
+
+            do
+                local ids = self_player.path_node_ids
+                if ids and #ids >= 2 then
+                    local from_id = ids[1]
+                    local to_id   = ids[2]
+                    local routes_from = state.map_route_list[from_id]
+                    route_info  = routes_from and routes_from[to_id]
+                    if route_info then
+                        lane_offset = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
+                        lane_count  = route_info.lane_count or 1
+                    end
+                end
+            end
+
+            ------------------------------------------------------------------
+            -- Lane state + recentering (R1: after lane switch)
+            ------------------------------------------------------------------
+            if route_info then
+                ensure_player_lane_state(self_player, route_info)
+
+                if self_player._lane_just_switched then
+                    local lc  = route_info.lane_count or 1
+                    local lof = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
+                    local center = compute_lane_center_offset(self_player._lane_index or 1, lc, lof)
+                    self_player._lane_target_offset =
+                        self_player._lane_target_offset +
+                        (center - self_player._lane_target_offset) * preset.path_recentering
+                    self_player._lane_just_switched = false
+                end
+
+                local lane_current_offset = apply_soft_lane_offset(self_player)
+
+                if lane_current_offset ~= 0 then
+                    local nx = -dir_y
+                    local ny =  dir_x
+                    local nlen = math.sqrt(nx*nx + ny*ny)
+                    if nlen > 0 then
+                        nx = nx / nlen
+                        ny = ny / nlen
+                        px = px + nx * lane_current_offset
+                        py = py + ny * lane_current_offset
+                    end
+                end
+            end
+
+            ------------------------------------------------------------------
+            -- Collision disabled → skip detection, steering, queueing
+            ------------------------------------------------------------------
+            if not self_player.config.collision_enabled then
+                -- keep dir_x, dir_y, speed as is
+            else
+                ------------------------------------------------------------------
+                -- Detection + predictive/reactive steering + queueing
+                ------------------------------------------------------------------
+                local players = state.players
+
+                local predictive_force_x = 0
+                local predictive_force_y = 0
+                local reactive_force_x   = 0
+                local reactive_force_y   = 0
+
+                local density_count = 0
+
+                for _, other in pairs(players) do
+                    if other ~= self_player then
+
+                        if my_group == nil or (other.config and other.config.collision_groups and my_group[other.config.collision_groups]) then
+
+                            local ox = other.current_position.x
+                            local oy = other.current_position.y
+
+                            local dx = ox - px
+                            local dy = oy - py
+                            local odist_sq = dx*dx + dy*dy
+
+                            if odist_sq > 0 then
+                                local my_lane    = self_player._lane_index or 1
+                                local other_lane = other._lane_index or 1
+                                local lane_delta = math.abs(my_lane - other_lane)
+
+                                local effective_radius = base_radius + lane_delta * lane_offset
+                                effective_radius = effective_radius * preset.density_radius_factor
+                                local effective_radius_sq = effective_radius * effective_radius
+
+                                if odist_sq < effective_radius_sq then
+                                    density_count = density_count + 1
+
+                                    local dot = dx * dir_x + dy * dir_y
+                                    if dot > 0 then
+                                        local odist = math.sqrt(odist_sq)
+
+                                        local lookahead = preset.lookahead_min +
+                                            (preset.lookahead_max - preset.lookahead_min) *
+                                            math.min(1, speed * preset.lookahead_speed_factor)
+
+                                        local predictive_zone = effective_radius * lookahead
+                                        local reactive_zone   = effective_radius * (lookahead * 0.5)
+
+                                        local ndx = dx / odist
+                                        local ndy = dy / odist
+
+                                        if odist < reactive_zone then
+                                            blocked_ahead = true
+                                            reactive_force_x = reactive_force_x - ndx * preset.reactive_scale
+                                            reactive_force_y = reactive_force_y - ndy * preset.reactive_scale
+
+                                            if other._last_speed and other._last_speed < speed then
+                                                slower_ahead = true
+                                            end
+                                        elseif odist < predictive_zone then
+                                            blocked_ahead = true
+                                            predictive_force_x = predictive_force_x - ndx * preset.predictive_scale
+                                            predictive_force_y = predictive_force_y - ndy * preset.predictive_scale
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                ------------------------------------------------------------------
+                -- Density-based slowdown
+                ------------------------------------------------------------------
+                if density_count > 0 then
+                    local density_factor = 1 - math.min(1, density_count * preset.density_slow_factor * 0.1)
+                    speed = speed * density_factor
+                end
+
+                ------------------------------------------------------------------
+                -- Queueing (Q1: only when blocked)
+                ------------------------------------------------------------------
+                if blocked_ahead then
+                    local queue_spacing = base_radius * preset.queue_spacing_factor
+                    if queue_spacing > 0 then
+                        speed = speed * preset.queue_slow
+                    end
+                end
+
+                ------------------------------------------------------------------
+                -- Combine base + predictive + reactive (F2: weighted blend)
+                ------------------------------------------------------------------
+                local base_weight = math.max(0, 1 - preset.predictive_scale - preset.reactive_scale)
+                local final_x = base_dir_x * base_weight + predictive_force_x + reactive_force_x
+                local final_y = base_dir_y * base_weight + predictive_force_y + reactive_force_y
+
+                local flen = math.sqrt(final_x*final_x + final_y*final_y)
+                if flen > 0 then
+                    final_x = final_x / flen
+                    final_y = final_y / flen
+                else
+                    final_x = base_dir_x
+                    final_y = base_dir_y
+                end
+
+                dir_x = final_x
+                dir_y = final_y
+
+                ------------------------------------------------------------------
+                -- Lane switching if blocked
+                ------------------------------------------------------------------
+                if blocked_ahead and route_info then
+                    attempt_lane_switch(self, self_player, route_info, blocked_ahead, slower_ahead, speed)
+                    self_player._lane_just_switched = true
+                end
+
+                ------------------------------------------------------------------
+                -- Speed smoothing
+                ------------------------------------------------------------------
+                if self_player._last_speed then
+                    speed = self_player._last_speed + (speed - self_player._last_speed) * preset.speed_smoothing
+                end
+            end
+
+            ------------------------------------------------------------------
+            -- Apply rotation smoothing
+            ------------------------------------------------------------------
             if self_player.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
             end
 
+            ------------------------------------------------------------------
+            -- Move player
+            ------------------------------------------------------------------
             local new_x = self_player.current_position.x + dir_x * speed
             local new_y = self_player.current_position.y + dir_y * speed
 
@@ -2025,9 +2126,9 @@ function Map:player_update(self_player, speed)
             }
         end
 
-        ------------------------------------------------------------------
+        ----------------------------------------------------------------------
         -- Destination reached
-        ------------------------------------------------------------------
+        ----------------------------------------------------------------------
         if i == last_index then
             local dest_id  = self_player.destination_list[self_player.destination_index]
             local dest_pos = map_node_list[dest_id].position
