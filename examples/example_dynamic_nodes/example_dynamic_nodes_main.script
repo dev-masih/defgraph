@@ -23,17 +23,17 @@ function init(self)
     node11 = self.map:create_node(vmath.vector3(800, 270, 0))
 
     -- defining routes between nodes
-    self.map:add_route(node05, node11, false, 4, 10)
-    self.map:add_route(node11, node10, false, 4, 10)
-    self.map:add_route(node10, node09, false, 4, 10)
-    self.map:add_route(node09, node08, false, 4, 10)
-    self.map:add_route(node08, node07, false, 4, 10)
-    self.map:add_route(node07, node06, false, 4, 10)
-    self.map:add_route(node06, node02, false, 4, 10)
-    self.map:add_route(node02, node03, false, 4, 10)
-    self.map:add_route(node03, node04, false, 4, 10)
-    self.map:add_route(node04, node05, false, 4, 10)
-    self.map:add_route(node04, node01, false, 4, 10)
+    self.map:add_route(node05, node11)
+    self.map:add_route(node11, node10)
+    self.map:add_route(node10, node09)
+    self.map:add_route(node09, node08)
+    self.map:add_route(node08, node07)
+    self.map:add_route(node07, node06)
+    self.map:add_route(node06, node02)
+    self.map:add_route(node02, node03)
+    self.map:add_route(node03, node04)
+    self.map:add_route(node04, node05)
+    self.map:add_route(node04, node01)
 
     self.map_trigger = true
 end

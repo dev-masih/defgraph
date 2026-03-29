@@ -38,7 +38,7 @@ function update(self, dt)
 	-- update go rotation based of returned result
 	go.set_rotation(self.update_result.rotation)
 
-	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), true, true, true, true)
+	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), false, false, false, true)
 
 	-- you can check if go reached to the destination
 	if self.update_result.is_reached then
