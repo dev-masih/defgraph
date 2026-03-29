@@ -36,8 +36,8 @@ function update(self, dt)
 	go.set_position(self.update_result.position)
 
 	-- you can check if go reached to the destination
-	if self.update_result.is_reached then
-		print("I'm at destination id : " .. self.update_result.destination_id)
+	if self.update_result.reached then
+		print("I'm at destination id : " .. self.update_result.reached_destination_id)
 	end
 
 	-- debug draw defgraph player with specific color

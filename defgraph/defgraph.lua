@@ -1584,16 +1584,13 @@ function Map:player_update(self_player, speed)
     ----------------------------------------------------------------------
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
-        if not self_player.initial_angle then
-            return nil
-        end
+        if not self_player.initial_angle then return nil end
 
         local cf = self_player.current_face_vector
         local rx = cf.x + (dir_x - cf.x) * (0.2 * speed)
         local ry = cf.y + (dir_y - cf.y) * (0.2 * speed)
 
         local angle = math.atan2(ry, rx)
-
         local prev_angle = self_player._prev_angle or angle
         local diff = angle - prev_angle
 
@@ -1614,7 +1611,21 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 3. No path
+    -- Helper to build return table
+    ----------------------------------------------------------------------
+    local function make_result(reached_this_frame, reached_id, is_finished)
+        return {
+            position               = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+            rotation               = rotation,
+            reached_destination_id = reached_this_frame and reached_id or nil,
+            to_destination_id      = self_player.destination_list[self_player.destination_index],
+            reached                = reached_this_frame or false,
+            finished               = is_finished or false,
+        }
+    end
+
+    ----------------------------------------------------------------------
+    -- 3. No path case
     ----------------------------------------------------------------------
     if path_index == 0 then
         if self_player.initial_angle then
@@ -1622,16 +1633,12 @@ function Map:player_update(self_player, speed)
             rotation = apply_rotation_smoothing(cf.x, cf.y)
         end
 
-        return {
-            position       = self_player.current_position,
-            rotation       = rotation,
-            is_reached     = false,
-            destination_id = self_player.destination_list[self_player.destination_index],
-        }
+        local is_finished = #self_player.destination_list <= 1
+        return make_result(false, nil, is_finished)
     end
 
     ----------------------------------------------------------------------
-    -- 4. Collision avoidance helper
+    -- 4. Collision avoidance helper (keep your existing implementation)
     ----------------------------------------------------------------------
     local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
         local cfg = self_player.config
@@ -2014,16 +2021,11 @@ function Map:player_update(self_player, speed)
             self_player.current_position.x = new_x
             self_player.current_position.y = new_y
 
-            return {
-                position       = vmath.vector3(new_x, new_y, 0),
-                rotation       = rotation,
-                is_reached     = false,
-                destination_id = self_player.destination_list[self_player.destination_index],
-            }
+            return make_result(false, nil, false)
         end
 
         ------------------------------------------------------------------
-        -- 6. Destination reached
+        -- 6. Destination reached this frame
         ------------------------------------------------------------------
         if i == last_index then
             local dest_id  = self_player.destination_list[self_player.destination_index]
@@ -2041,59 +2043,66 @@ function Map:player_update(self_player, speed)
             if is_reached then
                 local count = #self_player.destination_list
                 local rt = self_player.route_type
+                local should_continue = true
+                local is_finished = false
 
-                if rt == M.ROUTETYPE.ONETIME then
-                    if self_player.destination_index < count then
-                        self_player.destination_index = self_player.destination_index + 1
-                        self_player = self:move_internal_initialize(self_player.current_position, self_player)
-                    end
-                elseif rt == M.ROUTETYPE.SHUFFLE then
-                    if count > 1 then
-                        local new_id = self_player.destination_index
-                        repeat
-                            new_id = math.random(count)
-                        until new_id ~= self_player.destination_index
-                        self_player.destination_index = new_id
-                        self_player = self:move_internal_initialize(self_player.current_position, self_player)
-                    end
-                elseif rt == M.ROUTETYPE.CYCLE then
-                    if self_player.destination_index < count then
-                        self_player.destination_index = self_player.destination_index + 1
-                    else
-                        self_player.destination_index = 1
-                    end
-                    self_player = self:move_internal_initialize(self_player.current_position, self_player)
-
-                elseif rt == M.ROUTETYPE.PATROL then
-                    if count <= 1 then
-                        -- nothing to patrol
-                    else
-                        local next_index = self_player.destination_index + self_player.patrol_direction
-
-                        if next_index > count then
-                            -- reached end → reverse
-                            self_player.patrol_direction = -1
-                            next_index = count - 1
-                        elseif next_index < 1 then
-                            -- reached start → reverse
-                            self_player.patrol_direction = 1
-                            next_index = 2
+                if count == 1 then
+                    -- Single destination case: once reached, we are finished
+                    should_continue = false
+                    is_finished = true
+                else
+                    if rt == M.ROUTETYPE.ONETIME then
+                        if self_player.destination_index < count then
+                            self_player.destination_index = self_player.destination_index + 1
+                        else
+                            should_continue = false
+                            is_finished = true
                         end
 
-                        self_player.destination_index = next_index
-                        self_player = self:move_internal_initialize(self_player.current_position, self_player)
+                    elseif rt == M.ROUTETYPE.SHUFFLE then
+                        if count > 1 then
+                            local new_id = self_player.destination_index
+                            repeat
+                                new_id = math.random(count)
+                            until new_id ~= self_player.destination_index
+                            self_player.destination_index = new_id
+                        end
+
+                    elseif rt == M.ROUTETYPE.CYCLE then
+                        self_player.destination_index = (self_player.destination_index % count) + 1
+
+                    elseif rt == M.ROUTETYPE.PATROL then
+                        if count > 1 then
+                            local dir = self_player.patrol_direction or 1
+                            local next_index = self_player.destination_index + dir
+
+                            if next_index > count then
+                                self_player.patrol_direction = -1
+                                next_index = count - 1
+                            elseif next_index < 1 then
+                                self_player.patrol_direction = 1
+                                next_index = 2
+                            end
+                            self_player.destination_index = next_index
+                        end
                     end
                 end
+
+                if should_continue then
+                    self_player = self:move_internal_initialize(self_player.current_position, self_player)
+                end
+
+                -- Return with proper reached + finished flags
+                return make_result(true, dest_id, is_finished)
             end
 
-            return {
-                position       = self_player.current_position,
-                rotation       = rotation,
-                is_reached     = is_reached,
-                destination_id = dest_id,
-            }
+            -- Not exactly at destination yet
+            return make_result(false, nil, false)
         end
     end
+
+    -- Fallback
+    return make_result(false, nil, false)
 end
 
 ----------------------------------------------------------------------
