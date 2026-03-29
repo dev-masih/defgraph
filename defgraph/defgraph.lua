@@ -84,7 +84,8 @@ local NODETYPE = {
 M.ROUTETYPE = {
     ONETIME = hash("defgraph_routetype_onetime"),
     SHUFFLE = hash("defgraph_routetype_shuffle"),
-    CYCLE   = hash("defgraph_routetype_cycle")
+    CYCLE   = hash("defgraph_routetype_cycle"),
+    PATROL  = hash("defgraph_routetype_patrol")
 }
 
 M.CollisionBehavior = {
@@ -2062,6 +2063,26 @@ function Map:player_update(self_player, speed)
                         self_player.destination_index = 1
                     end
                     self_player = self:move_internal_initialize(self_player.current_position, self_player)
+
+                elseif rt == M.ROUTETYPE.PATROL then
+                    if count <= 1 then
+                        -- nothing to patrol
+                    else
+                        local next_index = self_player.destination_index + self_player.patrol_direction
+
+                        if next_index > count then
+                            -- reached end → reverse
+                            self_player.patrol_direction = -1
+                            next_index = count - 1
+                        elseif next_index < 1 then
+                            -- reached start → reverse
+                            self_player.patrol_direction = 1
+                            next_index = 2
+                        end
+
+                        self_player.destination_index = next_index
+                        self_player = self:move_internal_initialize(self_player.current_position, self_player)
+                    end
                 end
             end
 
@@ -2548,6 +2569,7 @@ function Player:destroy()
     self.current_face_vector = nil
     self._prev_angle = nil
     self.groups = nil
+    self.patrol_direction = nil
 
     -- scratch / debug fields (safe to clear)
     self._scratch_candidates = nil
@@ -2760,6 +2782,7 @@ function Map:create_player(key, groups, initial_position,
         path                                  = {},
         path_node_ids                         = {},
         path_version                          = 0,
+        patrol_direction                      = 1,  -- used for PATROL route type
  
         current_position                      = initial_position,
         current_face_vector                   = initial_face_vector,
