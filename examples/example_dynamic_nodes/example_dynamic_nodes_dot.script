@@ -15,7 +15,7 @@ function init(self)
 		collision_enabled = true,
 		collision_radius = 10,
 		collision_groups = { "myGroup" },
-		collision_behavior = defgraph.CollisionBehavior.Balanced
+		collision_behavior = defgraph.CollisionBehavior.Cautious
 	})
 
 	-- initializing defgraph player with face direction

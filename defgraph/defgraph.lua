@@ -88,128 +88,82 @@ M.ROUTETYPE = {
 }
 
 M.CollisionBehavior = {
-    SuperCautious = hash("defgraph_collision_behavior_super_cautious"),
-    Cautious      = hash("defgraph_collision_behavior_cautious"),
-    Balanced      = hash("defgraph_collision_behavior_balanced"),
-    Reactive      = hash("defgraph_collision_behavior_reactive"),
-    SuperReactive = hash("defgraph_collision_behavior_super_reactive")
+    Cautious  = hash("defgraph_collision_behavior_cautious"),
+    Balanced  = hash("defgraph_collision_behavior_balanced"),
+    Reactive  = hash("defgraph_collision_behavior_reactive")
 }
 
 local COLLISION_BEHAVIOR_PRESETS = {
-    [M.CollisionBehavior.SuperCautious] = {
-        lookahead_min           = 0.40,
-        lookahead_max           = 0.80,
-        lookahead_speed_factor  = 0.035,
-
-        predictive_scale        = 0.55,
-        reactive_scale          = 0.32,
-
-        predictive_slow         = 0.95,
-        reactive_slow           = 0.85,
-
-        queue_spacing_factor    = 1.9,
-        queue_slow              = 0.97,
-
-        path_recentering        = 0.65,
-
-        dir_smoothing           = 0.32,
-        speed_smoothing         = 0.26,
-
-        -- NEW:
-        density_radius_factor   = 3.0,   -- radius * 3
-        density_slow_factor     = 0.50,  -- strong slowdown
-    },
-
     [M.CollisionBehavior.Cautious] = {
-        lookahead_min           = 0.32,
-        lookahead_max           = 0.70,
-        lookahead_speed_factor  = 0.028,
+        lookahead_min           = 0.38,
+        lookahead_max           = 0.78,
+        lookahead_speed_factor  = 0.032,
 
-        predictive_scale        = 0.50,
-        reactive_scale          = 0.28,
+        predictive_scale        = 0.53,
+        reactive_scale          = 0.30,
 
-        predictive_slow         = 0.92,
-        reactive_slow           = 0.82,
+        predictive_slow         = 0.94,
+        reactive_slow           = 0.84,
 
-        queue_spacing_factor    = 1.7,
-        queue_slow              = 0.95,
+        queue_spacing_factor    = 1.85,
+        queue_slow              = 0.96,
 
-        path_recentering        = 0.55,
+        path_recentering        = 0.62,
+        path_recentering_collision_scale = 0.35,
 
-        dir_smoothing           = 0.26,
-        speed_smoothing         = 0.22,
+        dir_smoothing           = 0.30,
+        speed_smoothing         = 0.24,
 
-        density_radius_factor   = 2.8,
-        density_slow_factor     = 0.40,
+        density_radius_factor   = 2.9,
+        density_slow_factor     = 0.48,
     },
 
     [M.CollisionBehavior.Balanced] = {
-        lookahead_min           = 0.25,
-        lookahead_max           = 0.60,
-        lookahead_speed_factor  = 0.02,
+        lookahead_min           = 0.28,
+        lookahead_max           = 0.65,
+        lookahead_speed_factor  = 0.022,
 
-        predictive_scale        = 0.45,
-        reactive_scale          = 0.25,
+        predictive_scale        = 0.48,
+        reactive_scale          = 0.38,
 
-        predictive_slow         = 0.90,
-        reactive_slow           = 0.80,
+        predictive_slow         = 0.88,
+        reactive_slow           = 0.78,
 
-        queue_spacing_factor    = 1.5,
-        queue_slow              = 0.95,
+        queue_spacing_factor    = 1.65,
+        queue_slow              = 0.92,
 
-        path_recentering        = 0.50,
+        path_recentering        = 0.28,
+        path_recentering_collision_scale = 0.35,
 
-        dir_smoothing           = 0.22,
-        speed_smoothing         = 0.18,
+        dir_smoothing           = 0.35,
+        speed_smoothing         = 0.28,
 
-        density_radius_factor   = 2.5,
-        density_slow_factor     = 0.30,
+        density_radius_factor   = 2.8,
+        density_slow_factor     = 0.45,
     },
 
     [M.CollisionBehavior.Reactive] = {
-        lookahead_min           = 0.20,
-        lookahead_max           = 0.50,
-        lookahead_speed_factor  = 0.015,
+        lookahead_min           = 0.18,
+        lookahead_max           = 0.48,
+        lookahead_speed_factor  = 0.013,
 
-        predictive_scale        = 0.40,
-        reactive_scale          = 0.30,
+        predictive_scale        = 0.38,
+        reactive_scale          = 0.42,
 
-        predictive_slow         = 0.85,
-        reactive_slow           = 0.75,
+        predictive_slow         = 0.82,
+        reactive_slow           = 0.72,
 
-        queue_spacing_factor    = 1.3,
-        queue_slow              = 0.90,
+        queue_spacing_factor    = 1.25,
+        queue_slow              = 0.87,
 
-        path_recentering        = 0.40,
+        path_recentering        = 0.22,
+        path_recentering_collision_scale = 0.28,
 
-        dir_smoothing           = 0.18,
-        speed_smoothing         = 0.14,
+        dir_smoothing           = 0.28,
+        speed_smoothing         = 0.22,
 
-        density_radius_factor   = 2.2,
-        density_slow_factor     = 0.20,
-    },
-
-    [M.CollisionBehavior.SuperReactive] = {
-        lookahead_min           = 0.15,
-        lookahead_max           = 0.40,
-        lookahead_speed_factor  = 0.01,
-
-        predictive_scale        = 0.35,
-        reactive_scale          = 0.35,
-
-        predictive_slow         = 0.80,
-        reactive_slow           = 0.70,
-
-        queue_spacing_factor    = 1.2,
-        queue_slow              = 0.85,
-
-        path_recentering        = 0.30,
-
-        dir_smoothing           = 0.12,
-        speed_smoothing         = 0.10,
-
-        density_radius_factor   = 2.0,
-        density_slow_factor     = 0.10,  -- barely slows down
+        density_radius_factor   = 2.3,
+        density_slow_factor     = 0.18,
     },
 }
 
@@ -1656,7 +1610,7 @@ function Map:player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 4. Collision avoidance helper (optimized, same behavior)
+    -- 4. Collision avoidance helper
     ----------------------------------------------------------------------
     local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
         local cfg = self_player.config
@@ -1943,10 +1897,17 @@ function Map:player_update(self_player, speed)
             raw_x, raw_y = 0, 0
         end
 
-        -- path recentering
+        -- path recentering (relaxed during collision)
         local alignment = raw_x * dir_x + raw_y * dir_y
         if alignment < 0.6 then
-            local correction = (0.6 - alignment) * preset.path_recentering
+            local recenter_strength = preset.path_recentering
+
+            -- NEW: dynamically reduce recentering when we are actively avoiding
+            if strongest_reactive > 0 or strongest_predictive > 0 or strongest_queueing > 0 then
+                recenter_strength = recenter_strength * (preset.path_recentering_collision_scale or 0.4)
+            end
+
+            local correction = (0.6 - alignment) * recenter_strength
             raw_x = raw_x + dir_x * correction
             raw_y = raw_y + dir_y * correction
 
