@@ -505,6 +505,7 @@ function Map:remove_player(key)
     end
 
     get_map_state(self).players[key] = nil
+    self:invalidate_collision_cache()
 end
 
 function Map:get_players_in_group(group)
@@ -527,6 +528,7 @@ function Map:remove_players_in_group(group)
     end
 
     get_map_state(self).players_by_group[group] = nil
+    self:invalidate_collision_cache()
 end
 
 function Map:add_player_to_group(key, group)
@@ -596,6 +598,7 @@ function Map:destroy()
     get_map_state(self).pathfinder_cache = {}
     get_map_state(self).node_version     = {}
     get_map_state(self).route_version    = {}
+    get_map_state(self).collision_candidate_cache = {}
 
     self._destroyed = true
 
@@ -1367,6 +1370,9 @@ end
 ----------------------------------------------------------------------
 -- Path curvature
 ----------------------------------------------------------------------
+---------------------------------------------------------------------- 
+-- Path curvature 
+---------------------------------------------------------------------- 
 local function process_path_curvature(before, current, after, roundness,
                                       path_curve_tightness,
                                       path_curve_max_distance_from_corner,
@@ -1404,7 +1410,8 @@ local function process_path_curvature(before, current, after, roundness,
         end
     end
 
-    if roundness ~= 1 then
+    if roundness ~= 1 and roundness > 0 then
+        -- FIXED: Properly capture boundary points from deeper recursion levels
         local _, Qb, _ = process_path_curvature(Q_before, R_before, Q_after, roundness - 1,
                                path_curve_tightness,
                                path_curve_max_distance_from_corner,
