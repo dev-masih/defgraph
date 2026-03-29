@@ -1939,36 +1939,10 @@ function Map:player_update(self_player, speed)
             end
 
             ------------------------------------------------------------------
-            -- Lane state + recentering (R1)
+            -- Lane state ONLY (no recentering yet)
             ------------------------------------------------------------------
             if route_info then
                 ensure_player_lane_state(self_player, route_info)
-
-                if self_player._lane_just_switched then
-                    local lc  = route_info.lane_count or 1
-                    local lof = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
-                    local center = compute_lane_center_offset(self_player._lane_index or 1, lc, lof)
-
-                    self_player._lane_target_offset =
-                        self_player._lane_target_offset +
-                        (center - self_player._lane_target_offset) * preset.path_recentering
-
-                    self_player._lane_just_switched = false
-                end
-
-                local lane_current_offset = apply_soft_lane_offset(self_player)
-
-                if lane_current_offset ~= 0 then
-                    local nx = -dir_y
-                    local ny =  dir_x
-                    local nlen = math.sqrt(nx*nx + ny*ny)
-                    if nlen > 0 then
-                        nx = nx / nlen
-                        ny = ny / nlen
-                        px = px + nx * lane_current_offset
-                        py = py + ny * lane_current_offset
-                    end
-                end
             end
 
             ------------------------------------------------------------------
@@ -1997,10 +1971,10 @@ function Map:player_update(self_player, speed)
                         if my_group == nil then
                             group_ok = true
                         elseif other_group_list then
-                            for i = 1, #my_group do
-                                local g = my_group[i]
-                                for j = 1, #other_group_list do
-                                    if other_group_list[j] == g then
+                            for gi = 1, #my_group do
+                                local g = my_group[gi]
+                                for gj = 1, #other_group_list do
+                                    if other_group_list[gj] == g then
                                         group_ok = true
                                         break
                                     end
@@ -2010,6 +1984,7 @@ function Map:player_update(self_player, speed)
                         end
 
                         if group_ok then
+
                             local ox = other.current_position.x
                             local oy = other.current_position.y
 
@@ -2030,10 +2005,9 @@ function Map:player_update(self_player, speed)
                                     density_count = density_count + 1
 
                                     local dot = dx * dir_x + dy * dir_y
-                                    local is_two_way_single_lane = (lane_count == 1)
+                                    local is_single_lane = (lane_count == 1)
 
-                                    if is_two_way_single_lane or dot > 0 then
-
+                                    if is_single_lane or dot > 0 then
                                         local odist = math.sqrt(odist_sq)
 
                                         local lookahead = preset.lookahead_min +
@@ -2114,6 +2088,40 @@ function Map:player_update(self_player, speed)
                 ------------------------------------------------------------------
                 if self_player._last_speed then
                     speed = self_player._last_speed + (speed - self_player._last_speed) * preset.speed_smoothing
+                end
+            end
+
+            ------------------------------------------------------------------
+            -- LANE RECENTERING (STRUCTURAL CHANGE)
+            -- Only recenter when NOT avoiding
+            ------------------------------------------------------------------
+            if route_info then
+                if not blocked_ahead then
+                    if self_player._lane_just_switched then
+                        local lc  = route_info.lane_count or 1
+                        local lof = route_info.lane_offset or DEFAULT_ROUTE_LANE_OFFSET
+                        local center = compute_lane_center_offset(self_player._lane_index or 1, lc, lof)
+
+                        self_player._lane_target_offset =
+                            self_player._lane_target_offset +
+                            (center - self_player._lane_target_offset) * preset.path_recentering
+
+                        self_player._lane_just_switched = false
+                    end
+                end
+
+                local lane_current_offset = apply_soft_lane_offset(self_player)
+
+                if lane_current_offset ~= 0 then
+                    local nx = -dir_y
+                    local ny =  dir_x
+                    local nlen = math.sqrt(nx*nx + ny*ny)
+                    if nlen > 0 then
+                        nx = nx / nlen
+                        ny = ny / nlen
+                        px = px + nx * lane_current_offset
+                        py = py + ny * lane_current_offset
+                    end
                 end
             end
 

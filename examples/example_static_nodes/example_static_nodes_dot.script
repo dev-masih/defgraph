@@ -13,7 +13,7 @@ function init(self)
 		path_curve_max_distance_from_corner = 15,
 
 		collision_enabled = true,
-		collision_radius = 10,
+		collision_radius = 15,
 		collision_groups = { "myGroup" },
 		collision_behavior = defgraph.CollisionBehavior.Balanced
 	})
