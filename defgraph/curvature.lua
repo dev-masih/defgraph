@@ -76,7 +76,7 @@ local function move_internal_initialize(self, source_position, move_data)
     end
 
     local from_path, to_path
-    local state = get_map_state(self)  -- We'll make sure get_map_state is available via map.lua
+    local state = self:get_map_state()
     local map_route_list = state.map_route_list
 
     if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then

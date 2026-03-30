@@ -3,6 +3,12 @@
 
 local constants = require("defgraph.constants")
 
+local function distance(source, destination)
+    local dx = source.x - destination.x
+    local dy = source.y - destination.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
 local function heap_push(heap, node_id, dist)
     local i = #heap + 1
     heap[i] = { id = node_id, dist = dist }
@@ -50,7 +56,7 @@ end
 -- ==================== Nearest Route ====================
 
 local function calculate_to_nearest_route(self, position)
-    local state = get_map_state(self)  -- Note: get_map_state is defined in map.lua, but we assume it's accessible via closure or we'll adjust later
+    local state = self:get_map_state()
     local map_node_list  = state.map_node_list
     local map_route_list = state.map_route_list
 
@@ -158,8 +164,8 @@ end
 -- ==================== Pathfinding ====================
 
 -- Note: path[1].distance = total distance from start to end (remaining distance decreases)
-function Map.calculate_path(self, start_id, finish_id)
-    local state = get_map_state(self)
+function calculate_path(self, start_id, finish_id)
+    local state = self:get_map_state()
     local map_node_list  = state.map_node_list
     local map_route_list = state.map_route_list
 
@@ -225,8 +231,8 @@ function Map.calculate_path(self, start_id, finish_id)
     end
 end
 
-function Map.fetch_path(self, from_id, to_id)
-    local state = get_map_state(self)
+function fetch_path(self, from_id, to_id)
+    local state = self:get_map_state()
     local pathfinder_cache = state.pathfinder_cache
 
     if from_id == to_id then
@@ -311,6 +317,6 @@ end
 -- Expose functions to be used by Map
 return {
     calculate_to_nearest_route = calculate_to_nearest_route,
-    calculate_path             = Map.calculate_path,
-    fetch_path                 = Map.fetch_path,
+    calculate_path             = calculate_path,
+    fetch_path                 = fetch_path,
 }

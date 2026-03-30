@@ -4,6 +4,7 @@
 local constants = require("defgraph.constants")
 local curvature = require("defgraph.curvature")
 local collision = require("defgraph.collision")
+local config_mod = require("defgraph.config")
 
 -- Tiny default helper (used in update_destinations)
 local function default(value, fallback)
@@ -113,7 +114,7 @@ local function player_update(self_player, speed)  -- Note: 'self' here is the Ma
     local threshold_sq = threshold * threshold
 
     local last_index = #path
-    local state = get_map_state(map)
+    local state = map:get_map_state()
     local map_node_list = state.map_node_list
 
     for i = path_index, last_index do
@@ -230,8 +231,9 @@ end
 function Player:update_config(new_config)
     assert(new_config, "Player:update_config: new_config is required")
 
-    if type(new_config) ~= "table" or getmetatable(new_config) ~= PlayerConfig then
-        new_config = PlayerConfig.new(new_config)
+local config_mod = require("defgraph.config")
+    if type(new_config) ~= "table" or getmetatable(new_config) ~= config_mod.PlayerConfig then
+        new_config = config_mod.PlayerConfig.new(new_config)
     end
 
     new_config:validate()

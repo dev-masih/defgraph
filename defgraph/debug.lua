@@ -20,7 +20,7 @@ end
 
 local function debug_draw_map_nodes(self, is_show_ids, is_show_meta)
     local s = debug_draw_scale
-    local state = get_map_state(self)
+    local state = self:get_map_state()
 
     local up     = vmath.vector3(0,  s, 0)
     local down   = vmath.vector3(0, -s, 0)
@@ -97,7 +97,7 @@ local function debug_draw_map_routes(self)
     local a3 = vmath.vector3(-arrow,  arrow, 0)
     local a4 = vmath.vector3(-arrow, -arrow, 0)
 
-    local state = get_map_state(self)
+    local state = self:get_map_state()
     local map_node_list  = state.map_node_list
     local map_route_list = state.map_route_list
 
@@ -165,8 +165,8 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
             local result = map:calculate_to_nearest_route(self_player.current_position)
             if result then
                 local proj = result.position_on_route
-                local from_pos = get_map_state(map).map_node_list[result.route_from_id].position
-                local to_pos   = get_map_state(map).map_node_list[result.route_to_id].position
+                local from_pos = map:get_map_state().map_node_list[result.route_from_id].position
+                local to_pos   = map:get_map_state().map_node_list[result.route_to_id].position
 
                 msg.post("@render:", "draw_line", { start_point = from_pos, end_point = to_pos, color = vmath.vector4(1, 1, 0, 1) })
                 msg.post("@render:", "draw_line", { start_point = self_player.current_position, end_point = proj, color = vmath.vector4(1, 1, 0, 1) })
@@ -248,8 +248,8 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
             local result = map:calculate_to_nearest_route(self_player.current_position)
             if result then
                 local proj = result.position_on_route
-                local from_pos = get_map_state(map).map_node_list[result.route_from_id].position
-                local to_pos   = get_map_state(map).map_node_list[result.route_to_id].position
+                local from_pos = map:get_map_state().map_node_list[result.route_from_id].position
+                local to_pos   = map:get_map_state().map_node_list[result.route_to_id].position
 
                 msg.post("@render:", "draw_line", { start_point = from_pos, end_point = to_pos, color = vmath.vector4(1,1,0,1) })
                 msg.post("@render:", "draw_line", { start_point = self_player.current_position, end_point = proj, color = vmath.vector4(1,1,0,1) })
@@ -372,7 +372,7 @@ end
 
 -- Debug draw group helpers (kept on Map)
 local function debug_draw_group(self, group, color, show_projection, show_dirs, show_snap)
-    local state = get_map_state(self)
+    local state = self:get_map_state()
     local g = state.players_by_group[group]
     if not g then return end
 
@@ -385,7 +385,7 @@ local function debug_draw_group(self, group, color, show_projection, show_dirs, 
 end
 
 local function debug_draw_groups(self, groups, color, show_projection, show_dirs, show_snap)
-    local state = get_map_state(self)
+    local state = self:get_map_state()
     local visited = {}
 
     for i = 1, #groups do

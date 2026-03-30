@@ -6,6 +6,7 @@ local pathfinding = require("defgraph.pathfinding")
 local curvature   = require("defgraph.curvature")
 local config_mod  = require("defgraph.config")
 local debug_mod   = require("defgraph.debug")
+local player_mod = require("defgraph.player")
 
 -- Tiny default helper (used in update_destinations)
 local function default(value, fallback)
@@ -114,8 +115,8 @@ Map.fetch_path                 = pathfinding.fetch_path
 -- Curvature & movement init
 Map.move_internal_initialize   = curvature.move_internal_initialize
 
--- Collision
--- (compute_collision_avoidance is called internally via player_update)
+-- Player update (the big one)
+Map.player_update              = player_mod.player_update
 
 -- Debug
 Map.debug_set_properties       = debug_mod.debug_set_properties
@@ -123,6 +124,9 @@ Map.debug_draw_map_nodes       = debug_mod.debug_draw_map_nodes
 Map.debug_draw_map_routes      = debug_mod.debug_draw_map_routes
 Map.debug_draw_group           = debug_mod.debug_draw_group
 Map.debug_draw_groups          = debug_mod.debug_draw_groups
+
+-- Also expose get_map_state so other modules can use it
+Map.get_map_state              = get_map_state
 
 -- ==================== Internal Helpers ====================
 
@@ -853,8 +857,8 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
 
     route_type = default(route_type, constants.ROUTETYPE.ONETIME)
 
-    if type(config) ~= "table" or getmetatable(config) ~= PlayerConfig then
-        config = PlayerConfig.new(config or {})
+    if type(config) ~= "table" or getmetatable(config) ~= config_mod.PlayerConfig then
+        config = config_mod.PlayerConfig.new(config or {})
     end
 
     config:validate()
@@ -890,7 +894,7 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
         config = config
     }
 
-    local player = setmetatable(move_data, Player)
+    local player = setmetatable(move_data, player_mod.Player)
 
     state.player_id_iter = state.player_id_iter + 1
     player.id = state.player_id_iter

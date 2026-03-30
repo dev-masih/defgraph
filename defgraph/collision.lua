@@ -1,6 +1,8 @@
 -- defgraph/collision.lua
 -- Collision avoidance system
 
+local constants = require("defgraph.constants")
+
 local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     local cfg = self_player.config
     if not cfg.collision_enabled then
@@ -20,7 +22,7 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
         return dir_x, dir_y, speed
     end
 
-    local preset = cfg.collision_behavior_preset or {}  -- will be set from constants later
+    local preset = constants.COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
 
     local px = self_player.current_position.x
     local py = self_player.current_position.y
@@ -59,7 +61,7 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
     -- clear previous contents
     for i = 1, #candidates do candidates[i] = nil end
 
-    local map_state = get_map_state(map)
+    local map_state = map:get_map_state()
 
     if cfg.collision_groups then
         for _, group in ipairs(cfg.collision_groups) do
