@@ -5,6 +5,12 @@ local constants = require("defgraph.constants")
 local curvature = require("defgraph.curvature")
 local collision = require("defgraph.collision")
 
+-- Tiny default helper (used in update_destinations)
+local function default(value, fallback)
+    if value == nil then return fallback end
+    return value
+end
+
 local Player = {}
 Player.__index = Player
 

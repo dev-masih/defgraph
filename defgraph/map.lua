@@ -2,8 +2,17 @@
 -- Map class - node/route management, groups, versioning, player creation, etc.
 
 local constants = require("defgraph.constants")
+local pathfinding = require("defgraph.pathfinding")
+local curvature   = require("defgraph.curvature")
+local config_mod  = require("defgraph.config")
+local debug_mod   = require("defgraph.debug")
 
--- Shared helper
+-- Tiny default helper (used in update_destinations)
+local function default(value, fallback)
+    if value == nil then return fallback end
+    return value
+end
+-- Shared helper (used by many files)
 local function distance(source, destination)
     local dx = source.x - destination.x
     local dy = source.y - destination.y
@@ -26,7 +35,7 @@ end
 local Map = {}
 Map.__index = Map
 
--- Prevent users from adding or changing fields directly on the Map object
+-- Protect Map from accidental field assignment
 function Map.__newindex(self, key, value)
     error('Cannot set Map.' .. tostring(key) .. ' (Map internal state is read-only)')
 end
@@ -38,7 +47,6 @@ local map_registry = {}
 function Map.create_map(key)
     assert(key, "Map key required")
     assert(not map_registry[key], "Map with this key already exists")
-
     local map = Map.new()
     map_registry[key] = map
     return map
@@ -62,11 +70,7 @@ end
 function Map.remove_map(key)
     local map = map_registry[key]
     if not map then return end
-
-    if map.destroy then
-        map:destroy()
-    end
-
+    if map.destroy then map:destroy() end
     map_registry[key] = nil
 end
 
@@ -99,6 +103,26 @@ function Map.new()
     set_map_state(map, state)
     return map
 end
+
+-- ==================== Attach External Functions ====================
+
+-- Pathfinding
+Map.calculate_to_nearest_route = pathfinding.calculate_to_nearest_route
+Map.calculate_path             = pathfinding.calculate_path
+Map.fetch_path                 = pathfinding.fetch_path
+
+-- Curvature & movement init
+Map.move_internal_initialize   = curvature.move_internal_initialize
+
+-- Collision
+-- (compute_collision_avoidance is called internally via player_update)
+
+-- Debug
+Map.debug_set_properties       = debug_mod.debug_set_properties
+Map.debug_draw_map_nodes       = debug_mod.debug_draw_map_nodes
+Map.debug_draw_map_routes      = debug_mod.debug_draw_map_routes
+Map.debug_draw_group           = debug_mod.debug_draw_group
+Map.debug_draw_groups          = debug_mod.debug_draw_groups
 
 -- ==================== Internal Helpers ====================
 
