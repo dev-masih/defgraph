@@ -1,8 +1,6 @@
 -- defgraph/pathfinding.lua
 -- Pathfinding, nearest route, and related functions
 
-local constants = require("defgraph.constants")
-
 local function distance(source, destination)
     local dx = source.x - destination.x
     local dy = source.y - destination.y

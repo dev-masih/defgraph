@@ -1,12 +1,12 @@
 -- defgraph/map.lua
 -- Map class - node/route management, groups, versioning, player creation, etc.
 
-local constants = require("defgraph.constants")
-local pathfinding = require("defgraph.pathfinding")
-local curvature   = require("defgraph.curvature")
-local config_mod  = require("defgraph.config")
-local debug_mod   = require("defgraph.debug")
-local player_mod = require("defgraph.player")
+local constants_module = require("defgraph.constants")
+local pathfinding_module = require("defgraph.pathfinding")
+local curvature_module   = require("defgraph.curvature")
+local debug_module   = require("defgraph.debug")
+local player_module = require("defgraph.player")
+local config_module = require("defgraph.config")
 
 -- Tiny default helper (used in update_destinations)
 local function default(value, fallback)
@@ -108,22 +108,22 @@ end
 -- ==================== Attach External Functions ====================
 
 -- Pathfinding
-Map.calculate_to_nearest_route = pathfinding.calculate_to_nearest_route
-Map.calculate_path             = pathfinding.calculate_path
-Map.fetch_path                 = pathfinding.fetch_path
+Map.calculate_to_nearest_route = pathfinding_module.calculate_to_nearest_route
+Map.calculate_path             = pathfinding_module.calculate_path
+Map.fetch_path                 = pathfinding_module.fetch_path
 
 -- Curvature & movement init
-Map.move_internal_initialize   = curvature.move_internal_initialize
+Map.move_internal_initialize   = curvature_module.move_internal_initialize
 
--- Player update (the big one)
-Map.player_update              = player_mod.player_update
+-- Player update
+Map.player_update              = player_module.player_update
 
 -- Debug
-Map.debug_set_properties       = debug_mod.debug_set_properties
-Map.debug_draw_map_nodes       = debug_mod.debug_draw_map_nodes
-Map.debug_draw_map_routes      = debug_mod.debug_draw_map_routes
-Map.debug_draw_group           = debug_mod.debug_draw_group
-Map.debug_draw_groups          = debug_mod.debug_draw_groups
+Map.debug_set_properties       = debug_module.debug_set_properties
+Map.debug_draw_map_nodes       = debug_module.debug_draw_map_nodes
+Map.debug_draw_map_routes      = debug_module.debug_draw_map_routes
+Map.debug_draw_group           = debug_module.debug_draw_group
+Map.debug_draw_groups          = debug_module.debug_draw_groups
 
 -- Also expose get_map_state so other modules can use it
 Map.get_map_state              = get_map_state
@@ -144,11 +144,11 @@ local function map_update_node_type(map, node_id)
     local neighbors = state.map_node_list[node_id].neighbor_id
     local n = #neighbors
     if n == 0 then
-        state.map_node_list[node_id].type = constants.NODETYPE.SINGLE
+        state.map_node_list[node_id].type = constants_module.NODETYPE.SINGLE
     elseif n == 1 then
-        state.map_node_list[node_id].type = constants.NODETYPE.DEADEND
+        state.map_node_list[node_id].type = constants_module.NODETYPE.DEADEND
     else
-        state.map_node_list[node_id].type = constants.NODETYPE.INTERSECTION
+        state.map_node_list[node_id].type = constants_module.NODETYPE.INTERSECTION
     end
 end
 
@@ -580,7 +580,7 @@ function Map:create_node(position, key, groups)
         id        = id,
         key       = key,
         position  = vmath.vector3(position.x, position.y, 0),
-        type      = constants.NODETYPE.SINGLE,
+        type      = constants_module.NODETYPE.SINGLE,
         neighbor_id = {},
         groups    = {},
     }
@@ -855,10 +855,10 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
-    route_type = default(route_type, constants.ROUTETYPE.ONETIME)
+    route_type = default(route_type, constants_module.ROUTETYPE.ONETIME)
 
-    if type(config) ~= "table" or getmetatable(config) ~= config_mod.PlayerConfig then
-        config = config_mod.PlayerConfig.new(config or {})
+    if type(config) ~= "table" or getmetatable(config) ~= config_module.PlayerConfig then
+        config = config_module.PlayerConfig.new(config or {})
     end
 
     config:validate()
@@ -867,7 +867,7 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
     local destination_id = 1
     local dest_count = #destination_list
 
-    if route_type == constants.ROUTETYPE.SHUFFLE and dest_count > 1 then
+    if route_type == constants_module.ROUTETYPE.SHUFFLE and dest_count > 1 then
         destination_id = math.random(dest_count)
     end
 
@@ -894,7 +894,7 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
         config = config
     }
 
-    local player = setmetatable(move_data, player_mod.Player)
+    local player = setmetatable(move_data, player_module.Player)
 
     state.player_id_iter = state.player_id_iter + 1
     player.id = state.player_id_iter

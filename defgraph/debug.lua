@@ -1,7 +1,7 @@
 -- defgraph/debug.lua
 -- All debug drawing functions
 
-local constants = require("defgraph.constants")
+local constants_module = require("defgraph.constants")
 
 -- Shared debug drawing defaults
 local debug_node_color          = vmath.vector4(1, 0, 1, 1)
@@ -11,7 +11,7 @@ local debug_draw_scale          = 5
 
 -- ==================== Map Debug Functions ====================
 
-local function debug_set_properties(node_color, two_way_route_color, one_way_route_color, draw_scale)
+local function debug_set_properties(self, node_color, two_way_route_color, one_way_route_color, draw_scale)
     debug_node_color          = node_color or debug_node_color
     debug_two_way_route_color = two_way_route_color or debug_two_way_route_color
     debug_one_way_route_color = one_way_route_color or debug_one_way_route_color
@@ -72,16 +72,16 @@ local function debug_draw_map_nodes(self, is_show_ids, is_show_meta)
             })
         end
 
-        if node.type == constants.NODETYPE.SINGLE then
+        if node.type == constants_module.NODETYPE.SINGLE then
             msg.post("@render:", "draw_line", { start_point = p + up,    end_point = p + left,  color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + left,  end_point = p + right, color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + right, end_point = p + up,    color = debug_node_color })
 
-        elseif node.type == constants.NODETYPE.DEADEND then
+        elseif node.type == constants_module.NODETYPE.DEADEND then
             msg.post("@render:", "draw_line", { start_point = p + diag,  end_point = p + ndiag, color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + vmath.vector3(-s, s, 0), end_point = p + vmath.vector3(s, -s, 0), color = debug_node_color })
 
-        elseif node.type == constants.NODETYPE.INTERSECTION then
+        elseif node.type == constants_module.NODETYPE.INTERSECTION then
             msg.post("@render:", "draw_line", { start_point = p + left + up,    end_point = p + right + up,    color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + right + up,   end_point = p + right + down,  color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + right + down, end_point = p + left + down,   color = debug_node_color })
@@ -134,8 +134,9 @@ end
 -- ==================== Player Debug Drawing ====================
 
 local function debug_draw_player(map, self_player, color, is_show_projection, is_show_directions, is_show_snap_radius, is_show_collision)
-    assert(self_player, "You must provide movement data")
-    assert(color, "You must provide a color")
+    assert(map, "debug_draw_player: map is required")
+    assert(self_player, "debug_draw_player: self_player is required")
+    color = color or vmath.vector4(1, 1, 0, 1)
 
     local path = self_player.path
     local start_i = self_player.path_index
@@ -298,7 +299,7 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
 
         -- Density radius
         do
-            local preset = constants.COLLISION_BEHAVIOR_PRESETS[self_player.config.collision_behavior]
+            local preset = constants_module.COLLISION_BEHAVIOR_PRESETS[self_player.config.collision_behavior]
             if preset and self_player._debug_density and self_player._debug_density > 0 then
                 local density = self_player._debug_density
                 local density_radius = radius * preset.density_radius_factor

@@ -1,4 +1,4 @@
--- defgraph/curvature.lua
+-- defgraph/curvature_module.lua
 -- Path curvature processing and movement initialization
 
 local function distance(source, destination)
@@ -193,6 +193,5 @@ end
 
 -- Export functions
 return {
-    process_path_curvature     = process_path_curvature,
     move_internal_initialize   = move_internal_initialize,
 }

@@ -41,5 +41,5 @@ function update(self, dt)
 	end
 
 	-- debug draw defgraph player with specific color
-	self.player:debug_draw(vmath.vector4(1, 1, 0, 1), false, false, false, true)
+	self.player:debug_draw_player(vmath.vector4(1, 1, 0, 1), false, false, false, true)
 end
