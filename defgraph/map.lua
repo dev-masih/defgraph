@@ -8,18 +8,6 @@ local debug_module   = require("defgraph.debug")
 local player_module = require("defgraph.player")
 local config_module = require("defgraph.config")
 
--- Tiny default helper (used in update_destinations)
-local function default(value, fallback)
-    if value == nil then return fallback end
-    return value
-end
--- Shared helper (used by many files)
-local function distance(source, destination)
-    local dx = source.x - destination.x
-    local dy = source.y - destination.y
-    return math.sqrt(dx * dx + dy * dy)
-end
-
 -- Internal hidden map state
 local map_state = setmetatable({}, {__mode = 'k'})
 
@@ -186,7 +174,7 @@ local function map_add_oneway_route(map, source_id, destination_id, route_info)
                 a          = a,
                 b          = b,
                 c          = c,
-                distance   = distance(from_pos, to_pos),
+                distance   = constants_module.distance(from_pos, to_pos),
                 ab_len2    = ab_len2,
                 inv_ab_len = inv_ab_len,
             }
@@ -537,7 +525,7 @@ function Map:update_node_position(node_id, position)
                     a          = a,
                     b          = b,
                     c          = c,
-                    distance   = distance(from_pos, to_pos),
+                    distance   = constants_module.distance(from_pos, to_pos),
                     ab_len2    = ab_len2,
                     inv_ab_len = inv_ab_len,
                 }
@@ -777,7 +765,7 @@ function Map:get_nearest_node_from_groups(position, groups)
         -- Try path from start_a
         local path_a = self:fetch_path(start_a, target)
         if path_a then
-            local dist = path_a.distance + distance(position, state.map_node_list[start_a].position)
+            local dist = path_a.distance + constants_module.distance(position, state.map_node_list[start_a].position)
             if dist < best_dist then
                 best_dist = dist
                 best_node = target
@@ -787,7 +775,7 @@ function Map:get_nearest_node_from_groups(position, groups)
         -- Try path from start_b
         local path_b = self:fetch_path(start_b, target)
         if path_b then
-            local dist = path_b.distance + distance(position, state.map_node_list[start_b].position)
+            local dist = path_b.distance + constants_module.distance(position, state.map_node_list[start_b].position)
             if dist < best_dist then
                 best_dist = dist
                 best_node = target
@@ -855,7 +843,7 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
     assert(initial_position, "You must provide initial position")
     assert(destination_list, "You must provide a destination list")
 
-    route_type = default(route_type, constants_module.ROUTETYPE.ONETIME)
+    route_type = constants_module.default(route_type, constants_module.ROUTETYPE.ONETIME)
 
     if type(config) ~= "table" or getmetatable(config) ~= config_module.PlayerConfig then
         config = config_module.PlayerConfig.new(config or {})

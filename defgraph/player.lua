@@ -6,12 +6,6 @@ local collision = require("defgraph.collision")
 local config_module = require("defgraph.config")
 local debug_module = require("defgraph.debug")
 
--- Tiny default helper (used in update_destinations)
-local function default(value, fallback)
-    if value == nil then return fallback end
-    return value
-end
-
 local Player = {}
 Player.__index = Player
 
@@ -260,7 +254,7 @@ end
 function Player:update_destinations(destination_list, route_type)
     assert(destination_list, "Player:update_destinations: destination_list is required")
 
-    route_type = default(route_type, self.route_type or constants_module.ROUTETYPE.ONETIME)
+    route_type = constants_module.default(route_type, self.route_type or constants_module.ROUTETYPE.ONETIME)
 
     self.destination_list = self.map:normalize_destination_list(destination_list)
 

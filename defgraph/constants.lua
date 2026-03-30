@@ -2,6 +2,18 @@
 
 local constants = {}
 
+-- Shared helpers
+function constants.default(value, fallback)
+    if value == nil then return fallback end
+    return value
+end
+
+function constants.distance(source, destination)
+    local dx = source.x - destination.x
+    local dy = source.y - destination.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
 constants.NODETYPE = {
     SINGLE       = hash("defgraph_nodetype_single"),
     DEADEND      = hash("defgraph_nodetype_deadend"),
