@@ -1,4 +1,4 @@
--- defgraph/curvature_module.lua
+-- defgraph/curvature.lua
 -- Path curvature processing and movement initialization
 
 local constants_module = require("defgraph.constants")

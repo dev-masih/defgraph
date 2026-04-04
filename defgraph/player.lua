@@ -2,7 +2,7 @@
 -- Player class and main update logic
 
 local constants_module = require("defgraph.constants")
-local collision = require("defgraph.collision")
+local collision_module = require("defgraph.collision")
 local config_module = require("defgraph.config")
 local debug_module = require("defgraph.debug")
 
@@ -15,7 +15,8 @@ function Player:update(speed)
     return self.map:player_update(self, speed)
 end
 
-local function player_update(map, self_player, speed)  -- Note: 'self' here is the Map
+local function player_update(self_player, speed)
+    local map = self_player.map
     assert(map, "Player has no map assigned")
 
     local path       = self_player.path
@@ -97,7 +98,7 @@ local function player_update(map, self_player, speed)  -- Note: 'self' here is t
     -- 4. Collision avoidance
     ----------------------------------------------------------------------
     local function compute_collision_avoidance(dir_x, dir_y, speed)
-        return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
+        return collision_module.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     end
 
     ----------------------------------------------------------------------

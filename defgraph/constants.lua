@@ -1,4 +1,4 @@
--- defgraph/constants_module.lua
+-- defgraph/constants.lua
 
 local constants = {}
 
