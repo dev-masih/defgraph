@@ -1,7 +1,7 @@
 -- defgraph/curvature.lua
 -- Path curvature processing and movement initialization
 
-local constants_module = require("defgraph.constants")
+local constants = require("defgraph.constants")
 
 local function process_path_curvature(before, current, after, roundness,
                                       path_curve_tightness,
@@ -19,23 +19,23 @@ local function process_path_curvature(before, current, after, roundness,
                      (path_curve_tightness - 1) / path_curve_tightness * after
 
     -- Guard zero-length segments and reuse distances
-    local bc_dist = constants_module.distance(before, current)
-    local ca_dist = constants_module.distance(current, after)
+    local bc_dist = constants.distance(before, current)
+    local ca_dist = constants.distance(current, after)
 
     if bc_dist > 0 then
-        if constants_module.distance(Q_before, before) > path_curve_max_distance_from_corner then
+        if constants.distance(Q_before, before) > path_curve_max_distance_from_corner then
             Q_before = vmath.lerp(path_curve_max_distance_from_corner / bc_dist, before, current)
         end
-        if constants_module.distance(R_before, current) > path_curve_max_distance_from_corner then
+        if constants.distance(R_before, current) > path_curve_max_distance_from_corner then
             R_before = vmath.lerp(path_curve_max_distance_from_corner / bc_dist, current, before)
         end
     end
 
     if ca_dist > 0 then
-        if constants_module.distance(Q_after, current) > path_curve_max_distance_from_corner then
+        if constants.distance(Q_after, current) > path_curve_max_distance_from_corner then
             Q_after = vmath.lerp(path_curve_max_distance_from_corner / ca_dist, current, after)
         end
-        if constants_module.distance(R_after, after) > path_curve_max_distance_from_corner then
+        if constants.distance(R_after, after) > path_curve_max_distance_from_corner then
             R_after = vmath.lerp(path_curve_max_distance_from_corner / ca_dist, after, current)
         end
     end
@@ -105,10 +105,10 @@ local function move_internal_initialize(self, source_position, move_data)
         local to_node_pos   = map_node_list[near_result.route_to_id].position
 
         if from_path then
-            from_distance = from_path.distance + constants_module.distance(source_position, from_node_pos)
+            from_distance = from_path.distance + constants.distance(source_position, from_node_pos)
         end
         if to_path then
-            to_distance = to_path.distance + constants_module.distance(source_position, to_node_pos)
+            to_distance = to_path.distance + constants.distance(source_position, to_node_pos)
         end
 
         if from_distance <= to_distance then

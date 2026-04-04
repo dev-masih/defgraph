@@ -1,7 +1,7 @@
 -- defgraph/config.lua
 -- PlayerConfig class
 
-local constants_module = require("defgraph.constants")
+local constants = require("defgraph.constants")
 
 local PlayerConfig = {}
 PlayerConfig.__index = PlayerConfig
@@ -17,22 +17,22 @@ local PLAYER_DEFAULTS = {
     collision_enabled = false,
     collision_radius  = 6,
     collision_groups  = nil,
-    collision_behavior = constants_module.CollisionBehavior.Balanced,
+    collision_behavior = constants.CollisionBehavior.Balanced,
 }
 
 function PlayerConfig.new(options)
     options = options or {}
 
     local self = {
-        gameobject_threshold = constants_module.default(options.gameobject_threshold, PLAYER_DEFAULTS.gameobject_threshold),
-        allow_enter_on_route = constants_module.default(options.allow_enter_on_route, PLAYER_DEFAULTS.allow_enter_on_route),
-        path_curve_tightness = constants_module.default(options.path_curve_tightness, PLAYER_DEFAULTS.path_curve_tightness),
-        path_curve_roundness = constants_module.default(options.path_curve_roundness, PLAYER_DEFAULTS.path_curve_roundness),
-        path_curve_max_distance_from_corner = constants_module.default(options.path_curve_max_distance_from_corner, PLAYER_DEFAULTS.path_curve_max_distance_from_corner),
-        collision_enabled = constants_module.default(options.collision_enabled, PLAYER_DEFAULTS.collision_enabled),
-        collision_radius  = constants_module.default(options.collision_radius, PLAYER_DEFAULTS.collision_radius),
-        collision_groups  = constants_module.default(options.collision_groups, PLAYER_DEFAULTS.collision_groups),
-        collision_behavior = constants_module.default(options.collision_behavior, PLAYER_DEFAULTS.collision_behavior),
+        gameobject_threshold = constants.default(options.gameobject_threshold, PLAYER_DEFAULTS.gameobject_threshold),
+        allow_enter_on_route = constants.default(options.allow_enter_on_route, PLAYER_DEFAULTS.allow_enter_on_route),
+        path_curve_tightness = constants.default(options.path_curve_tightness, PLAYER_DEFAULTS.path_curve_tightness),
+        path_curve_roundness = constants.default(options.path_curve_roundness, PLAYER_DEFAULTS.path_curve_roundness),
+        path_curve_max_distance_from_corner = constants.default(options.path_curve_max_distance_from_corner, PLAYER_DEFAULTS.path_curve_max_distance_from_corner),
+        collision_enabled = constants.default(options.collision_enabled, PLAYER_DEFAULTS.collision_enabled),
+        collision_radius  = constants.default(options.collision_radius, PLAYER_DEFAULTS.collision_radius),
+        collision_groups  = constants.default(options.collision_groups, PLAYER_DEFAULTS.collision_groups),
+        collision_behavior = constants.default(options.collision_behavior, PLAYER_DEFAULTS.collision_behavior),
     }
 
     return setmetatable(self, PlayerConfig)
@@ -77,7 +77,7 @@ function PlayerConfig:validate()
         end
     end
 
-    assert(constants_module.COLLISION_BEHAVIOR_PRESETS[self.collision_behavior],
+    assert(constants.COLLISION_BEHAVIOR_PRESETS[self.collision_behavior],
         "PlayerConfig: Invalid collision_behavior preset")
 
     -- Collision behavior

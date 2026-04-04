@@ -10,27 +10,27 @@ math.randomseed(os.time() - os.clock() * 1000)
 local M = {}
 
 -- Load all internal modules
-local constants_module   = require("defgraph.constants")
-local config_module      = require("defgraph.config")
-local map_module         = require("defgraph.map")
-local player_module      = require("defgraph.player")
+local constants = require("defgraph.constants")
+local config = require("defgraph.config")
+local map = require("defgraph.map")
+local player = require("defgraph.player")
 
 -- ==================== PUBLIC API ====================
 
 -- Public constants
-M.ROUTETYPE         = constants_module.ROUTETYPE
-M.CollisionBehavior = constants_module.CollisionBehavior
+M.ROUTETYPE         = constants.ROUTETYPE
+M.CollisionBehavior = constants.CollisionBehavior
 
 -- Public classes
-M.Map               = map_module.Map
-M.Player            = player_module.Player
-M.PlayerConfig      = config_module.PlayerConfig
+M.Map               = map.Map
+M.Player            = player.Player
+M.PlayerConfig      = config.PlayerConfig
 
 -- Map factory functions
-M.create_map        = map_module.create_map
-M.get_map           = map_module.get_map
-M.create_or_get_map = map_module.create_or_get_map
-M.has_map           = map_module.has_map
-M.remove_map        = map_module.remove_map
+M.create_map        = map.create_map
+M.get_map           = map.get_map
+M.create_or_get_map = map.create_or_get_map
+M.has_map           = map.has_map
+M.remove_map        = map.remove_map
 
 return M

@@ -1,7 +1,7 @@
 -- defgraph/debug.lua
 -- All debug drawing functions
 
-local constants_module = require("defgraph.constants")
+local constants = require("defgraph.constants")
 
 -- Shared debug drawing defaults
 local debug_node_color          = vmath.vector4(1, 0, 1, 1)
@@ -72,16 +72,16 @@ local function debug_draw_map_nodes(self, is_show_ids, is_show_meta)
             })
         end
 
-        if node.type == constants_module.NODETYPE.SINGLE then
+        if node.type == constants.NODETYPE.SINGLE then
             msg.post("@render:", "draw_line", { start_point = p + up,    end_point = p + left,  color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + left,  end_point = p + right, color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + right, end_point = p + up,    color = debug_node_color })
 
-        elseif node.type == constants_module.NODETYPE.DEADEND then
+        elseif node.type == constants.NODETYPE.DEADEND then
             msg.post("@render:", "draw_line", { start_point = p + diag,  end_point = p + ndiag, color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + vmath.vector3(-s, s, 0), end_point = p + vmath.vector3(s, -s, 0), color = debug_node_color })
 
-        elseif node.type == constants_module.NODETYPE.INTERSECTION then
+        elseif node.type == constants.NODETYPE.INTERSECTION then
             msg.post("@render:", "draw_line", { start_point = p + left + up,    end_point = p + right + up,    color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + right + up,   end_point = p + right + down,  color = debug_node_color })
             msg.post("@render:", "draw_line", { start_point = p + right + down, end_point = p + left + down,   color = debug_node_color })
@@ -299,7 +299,7 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
 
         -- Density radius
         do
-            local preset = constants_module.COLLISION_BEHAVIOR_PRESETS[self_player.config.collision_behavior]
+            local preset = constants.COLLISION_BEHAVIOR_PRESETS[self_player.config.collision_behavior]
             if preset and self_player._debug_density and self_player._debug_density > 0 then
                 local density = self_player._debug_density
                 local density_radius = radius * preset.density_radius_factor

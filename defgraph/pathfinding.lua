@@ -1,7 +1,7 @@
 -- defgraph/pathfinding.lua
 -- Pathfinding, nearest route, and related functions
 
-local constants_module = require("defgraph.constants")
+local constants = require("defgraph.constants")
 
 local function heap_push(heap, node_id, dist)
     local i = #heap + 1
@@ -107,8 +107,8 @@ local function calculate_to_nearest_route(self, position)
                     end
                     dist = math.abs(route.a * position.x + route.b * position.y + route.c) * inv_len
                 else
-                    local d1 = constants_module.distance(position, from_pos)
-                    local d2 = constants_module.distance(position, to_pos)
+                    local d1 = constants.distance(position, from_pos)
+                    local d2 = constants.distance(position, to_pos)
                     dist = (d1 < d2) and d1 or d2
                 end
 
@@ -117,7 +117,7 @@ local function calculate_to_nearest_route(self, position)
                     if is_between then
                         min_x, min_y = near_x, near_y
                     else
-                        if constants_module.distance(position, from_pos) < constants_module.distance(position, to_pos) then
+                        if constants.distance(position, from_pos) < constants.distance(position, to_pos) then
                             min_x, min_y = from_pos.x, from_pos.y
                         else
                             min_x, min_y = to_pos.x, to_pos.y

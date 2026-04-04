@@ -1,10 +1,10 @@
 -- defgraph/player.lua
 -- Player class and main update logic
 
-local constants_module = require("defgraph.constants")
-local collision_module = require("defgraph.collision")
-local config_module = require("defgraph.config")
-local debug_module = require("defgraph.debug")
+local constants = require("defgraph.constants")
+local collision = require("defgraph.collision")
+local config = require("defgraph.config")
+local debug = require("defgraph.debug")
 
 local Player = {}
 Player.__index = Player
@@ -93,7 +93,7 @@ local function player_update(self_player, speed)
     -- 4. Collision avoidance
     ----------------------------------------------------------------------
     local function compute_collision_avoidance(dir_x, dir_y, speed)
-        return collision_module.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
+        return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     end
 
     ----------------------------------------------------------------------
@@ -162,7 +162,7 @@ local function player_update(self_player, speed)
                     should_continue = false
                     is_finished = true
                 else
-                    if rt == constants_module.ROUTETYPE.ONETIME then
+                    if rt == constants.ROUTETYPE.ONETIME then
                         if self_player.destination_index < count then
                             self_player.destination_index = self_player.destination_index + 1
                         else
@@ -170,7 +170,7 @@ local function player_update(self_player, speed)
                             is_finished = true
                         end
 
-                    elseif rt == constants_module.ROUTETYPE.SHUFFLE then
+                    elseif rt == constants.ROUTETYPE.SHUFFLE then
                         if count > 1 then
                             local new_id = self_player.destination_index
                             repeat
@@ -179,10 +179,10 @@ local function player_update(self_player, speed)
                             self_player.destination_index = new_id
                         end
 
-                    elseif rt == constants_module.ROUTETYPE.CYCLE then
+                    elseif rt == constants.ROUTETYPE.CYCLE then
                         self_player.destination_index = (self_player.destination_index % count) + 1
 
-                    elseif rt == constants_module.ROUTETYPE.PATROL then
+                    elseif rt == constants.ROUTETYPE.PATROL then
                         if count > 1 then
                             local dir = self_player.patrol_direction or 1
                             local next_index = self_player.destination_index + dir
@@ -224,8 +224,8 @@ end
 function Player:update_config(new_config)
     assert(new_config, "Player:update_config: new_config is required")
 
-    if type(new_config) ~= "table" or getmetatable(new_config) ~= config_module.PlayerConfig then
-        new_config = config_module.PlayerConfig.new(new_config)
+    if type(new_config) ~= "table" or getmetatable(new_config) ~= config.PlayerConfig then
+        new_config = config.PlayerConfig.new(new_config)
     end
 
     new_config:validate()
@@ -254,7 +254,7 @@ end
 function Player:update_destinations(destination_list, route_type)
     assert(destination_list, "Player:update_destinations: destination_list is required")
 
-    route_type = constants_module.default(route_type, self.route_type or constants_module.ROUTETYPE.ONETIME)
+    route_type = constants.default(route_type, self.route_type or constants.ROUTETYPE.ONETIME)
 
     self.destination_list = self.map:normalize_destination_list(destination_list)
 
@@ -262,7 +262,7 @@ function Player:update_destinations(destination_list, route_type)
     self.destination_index = 1
     self.patrol_direction = 1
 
-    if route_type == constants_module.ROUTETYPE.SHUFFLE and count > 1 then
+    if route_type == constants.ROUTETYPE.SHUFFLE and count > 1 then
         self.destination_index = math.random(count)
     end
 
@@ -341,7 +341,7 @@ end
 
 function Player:debug_draw_player(color, show_projection, show_directions, show_snap_radius, show_collision)
     if not self.map then return end
-    debug_module.debug_draw_player(self.map, self, color or vmath.vector4(1,1,0,1),
+    debug.debug_draw_player(self.map, self, color or vmath.vector4(1,1,0,1),
                                 show_projection or false,
                                 show_directions or false,
                                 show_snap_radius or false,

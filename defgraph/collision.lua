@@ -1,7 +1,7 @@
 -- defgraph/collision.lua
 -- Collision avoidance system
 
-local constants_module = require("defgraph.constants")
+local constants = require("defgraph.constants")
 
 local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     local cfg = self_player.config
@@ -22,7 +22,7 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
         return dir_x, dir_y, speed
     end
 
-    local preset = constants_module.COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
+    local preset = constants.COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
 
     local px = self_player.current_position.x
     local py = self_player.current_position.y
