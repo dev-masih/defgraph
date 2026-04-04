@@ -103,9 +103,6 @@ Map.fetch_path                 = pathfinding_module.fetch_path
 -- Curvature & movement init
 Map.move_internal_initialize   = curvature_module.move_internal_initialize
 
--- Player update
-Map.player_update              = player_module.player_update
-
 -- Debug
 Map.debug_set_properties       = debug_module.debug_set_properties
 Map.debug_draw_map_nodes       = debug_module.debug_draw_map_nodes
