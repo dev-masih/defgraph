@@ -30,7 +30,7 @@ end
 
 function update(self, dt)
 	-- defgraph player calculation loop
-	self.update_result = self.player:update(50 * dt)
+	self.update_result = self.player:update(50 * dt, true)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)
@@ -38,6 +38,13 @@ function update(self, dt)
 	-- you can check if go reached to the destination
 	if self.update_result.reached then
 		print("I'm at destination id : " .. self.update_result.reached_destination_id)
+	end
+
+	if self.update_result.collided and #self.update_result.collided ~= 0 then
+		print("Collided with", #self.update_result.collided, "players")
+		for _, p in ipairs(self.update_result.collided) do
+			print("  -> id:", p.id, "key:", p.key, "groups:", table.concat(p.groups, ", "))
+		end
 	end
 
 	-- debug draw defgraph player with specific color

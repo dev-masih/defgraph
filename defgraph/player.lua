@@ -3,14 +3,17 @@
 
 local constants = require("defgraph.constants")
 local collision = require("defgraph.collision")
-local config = require("defgraph.config")
-local debug = require("defgraph.debug")
+local config    = require("defgraph.config")
+local debug     = require("defgraph.debug")
 
 local Player = {}
 Player.__index = Player
 
 -- ==================== Player Update (Main Logic) ====================
-local function player_update(self_player, speed)
+
+local function player_update(self_player, speed, compute_collision_list)
+    compute_collision_list = compute_collision_list or false   -- default off for performance
+
     local map = self_player.map
     assert(map, "Player has no map assigned")
 
@@ -65,6 +68,8 @@ local function player_update(self_player, speed)
     ----------------------------------------------------------------------
     -- Helper to build return table
     ----------------------------------------------------------------------
+    local collided = {}   -- will be filled only when requested
+
     local function make_result(reached_this_frame, reached_id, is_finished)
         return {
             position               = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
@@ -73,6 +78,7 @@ local function player_update(self_player, speed)
             to_destination_id      = self_player.destination_list[self_player.destination_index],
             reached                = reached_this_frame or false,
             finished               = is_finished or false,
+            collided               = collided,          -- new field
         }
     end
 
@@ -90,10 +96,59 @@ local function player_update(self_player, speed)
     end
 
     ----------------------------------------------------------------------
-    -- 4. Collision avoidance
+    -- 4. Collision avoidance + optional collision list
     ----------------------------------------------------------------------
     local function compute_collision_avoidance(dir_x, dir_y, speed)
         return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
+    end
+
+    -- Compute collided list only when explicitly requested AND collision is enabled
+    if compute_collision_list and self_player.config.collision_enabled then
+        local cfg = self_player.config
+        local radius_sq = cfg.collision_radius * cfg.collision_radius
+        local px = self_player.current_position.x
+        local py = self_player.current_position.y
+
+        local candidates = self_player._scratch_candidates or {}
+        self_player._scratch_candidates = candidates
+        local count = 0
+        for i = 1, #candidates do candidates[i] = nil end
+
+        local map_state = map:get_map_state()
+
+        if cfg.collision_groups then
+            for _, group in ipairs(cfg.collision_groups) do
+                local cached = map_state.collision_candidate_cache[group]
+                if cached then
+                    for j = 1, #cached do
+                        count = count + 1
+                        candidates[count] = cached[j]
+                    end
+                end
+            end
+        else
+            for _, p in pairs(map_state.players) do
+                count = count + 1
+                candidates[count] = p
+            end
+        end
+
+        for i = 1, count do
+            local other = candidates[i]
+            if other ~= self_player then
+                local ox = other.current_position.x
+                local oy = other.current_position.y
+                local dx = px - ox
+                local dy = py - oy
+                if dx*dx + dy*dy <= radius_sq then
+                    table.insert(collided, {
+                        id     = other.id,
+                        key    = other.key,
+                        groups = other:get_groups() or {}
+                    })
+                end
+            end
+        end
     end
 
     ----------------------------------------------------------------------
@@ -158,7 +213,6 @@ local function player_update(self_player, speed)
                 local is_finished = false
 
                 if count == 1 then
-                    -- Single destination case: once reached, we are finished
                     should_continue = false
                     is_finished = true
                 else
@@ -169,7 +223,6 @@ local function player_update(self_player, speed)
                             should_continue = false
                             is_finished = true
                         end
-
                     elseif rt == constants.ROUTETYPE.SHUFFLE then
                         if count > 1 then
                             local new_id = self_player.destination_index
@@ -178,15 +231,12 @@ local function player_update(self_player, speed)
                             until new_id ~= self_player.destination_index
                             self_player.destination_index = new_id
                         end
-
                     elseif rt == constants.ROUTETYPE.CYCLE then
                         self_player.destination_index = (self_player.destination_index % count) + 1
-
                     elseif rt == constants.ROUTETYPE.PATROL then
                         if count > 1 then
                             local dir = self_player.patrol_direction or 1
                             local next_index = self_player.destination_index + dir
-
                             if next_index > count then
                                 self_player.patrol_direction = -1
                                 next_index = count - 1
@@ -206,17 +256,15 @@ local function player_update(self_player, speed)
                 return make_result(true, dest_id, is_finished)
             end
 
-            -- Not exactly at destination yet
             return make_result(false, nil, false)
         end
     end
 
-    -- Fallback
     return make_result(false, nil, false)
 end
 
-function Player:update(speed)
-    return player_update(self, speed)
+function Player:update(speed, compute_collision_list)
+    return player_update(self, speed, compute_collision_list)
 end
 
 -- ==================== Player Helper Methods ====================
@@ -342,10 +390,10 @@ end
 function Player:debug_draw_player(color, show_projection, show_directions, show_snap_radius, show_collision)
     if not self.map then return end
     debug.debug_draw_player(self.map, self, color or vmath.vector4(1,1,0,1),
-                                show_projection or false,
-                                show_directions or false,
-                                show_snap_radius or false,
-                                show_collision or false)
+                            show_projection or false,
+                            show_directions or false,
+                            show_snap_radius or false,
+                            show_collision or false)
 end
 
 -- ==================== Export ====================
