@@ -10,11 +10,6 @@ local Player = {}
 Player.__index = Player
 
 -- ==================== Player Update (Main Logic) ====================
-
-function Player:update(speed)
-    return self.map:player_update(self, speed)
-end
-
 local function player_update(self_player, speed)
     local map = self_player.map
     assert(map, "Player has no map assigned")
@@ -218,6 +213,10 @@ local function player_update(self_player, speed)
 
     -- Fallback
     return make_result(false, nil, false)
+end
+
+function Player:update(speed)
+    return player_update(self, speed)
 end
 
 -- ==================== Player Helper Methods ====================
