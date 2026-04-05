@@ -1,5 +1,5 @@
 -- defgraph/player.lua
--- Full debug version - projection + vector3 fix
+-- Clean version with safe debug for projection + vector3
 
 local constants = require("defgraph.constants")
 local collision = require("defgraph.collision")
@@ -17,11 +17,14 @@ local function player_update(self_player, speed, compute_collision_list)
 
     local path       = self_player.path
     local path_index = self_player.path_index or 1
+    local dest_index = self_player.destination_index or 1
 
-    print(string.format("DEBUG: [%s] pos=(%.1f, %.1f) | path_index=%d | path_len=%d | dest_index=%d",
-          self_player.key or "?",
-          self_player.current_position.x, self_player.current_position.y,
-          path_index, #path or 0, self_player.destination_index))
+    print(string.format("DEBUG: [%s] pos=(%.1f, %.1f) | path=%d/%d | dest_idx=%d | targets=%s", 
+          self_player.key or "?", 
+          self_player.current_position.x or 0, 
+          self_player.current_position.y or 0,
+          path_index, #path or 0, dest_index, 
+          self_player.targets and "yes" or "NIL"))
 
     -- Path invalidation
     if path_index > 1 then
@@ -38,7 +41,18 @@ local function player_update(self_player, speed, compute_collision_list)
 
     if not path or #path == 0 then
         print("DEBUG: No path")
-        return { position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0), rotation = nil, reached = false, finished = true, collided = {} }
+        local rotation = nil
+        if self_player.initial_angle then
+            local cf = self_player.current_face_vector
+            rotation = vmath.quat_rotation_z(math.atan2(cf.y, cf.x) - self_player.initial_angle)
+        end
+        return {
+            position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+            rotation = rotation,
+            reached = false,
+            finished = true,
+            collided = {},
+        }
     end
 
     -- Rotation smoothing
@@ -70,8 +84,7 @@ local function player_update(self_player, speed, compute_collision_list)
     if compute_collision_list and self_player.config.collision_enabled then
         local cfg = self_player.config
         local radius_sq = cfg.collision_radius * cfg.collision_radius
-        local px = self_player.current_position.x
-        local py = self_player.current_position.y
+        local px, py = self_player.current_position.x, self_player.current_position.y
 
         local candidates = self_player._scratch_candidates or {}
         self_player._scratch_candidates = candidates
@@ -79,7 +92,6 @@ local function player_update(self_player, speed, compute_collision_list)
         for i = 1, #candidates do candidates[i] = nil end
 
         local map_state = map:get_map_state()
-
         if cfg.collision_groups then
             for _, group in ipairs(cfg.collision_groups) do
                 local cached = map_state.collision_candidate_cache[group]
@@ -100,16 +112,10 @@ local function player_update(self_player, speed, compute_collision_list)
         for i = 1, count do
             local other = candidates[i]
             if other ~= self_player then
-                local ox = other.current_position.x
-                local oy = other.current_position.y
-                local dx = px - ox
-                local dy = py - oy
+                local dx = px - other.current_position.x
+                local dy = py - other.current_position.y
                 if dx*dx + dy*dy <= radius_sq then
-                    table.insert(collided, {
-                        id     = other.id,
-                        key    = other.key,
-                        groups = other:get_groups() or {}
-                    })
+                    table.insert(collided, {id = other.id, key = other.key, groups = other:get_groups() or {}})
                 end
             end
         end
@@ -122,19 +128,13 @@ local function player_update(self_player, speed, compute_collision_list)
     local last_index = #path
     local i = path_index
 
-    print(string.format("DEBUG: Loop start - path_index=%d, last=%d", path_index, last_index))
-
     while i <= last_index do
         local target = path[i]
         local vx = target.x - self_player.current_position.x
         local vy = target.y - self_player.current_position.y
         local dist_sq = vx*vx + vy*vy
 
-        print(string.format("DEBUG: Point %d/%d | dist=%.2f | target=(%.1f,%.1f)", 
-              i, last_index, math.sqrt(dist_sq), target.x, target.y))
-
         if dist_sq > threshold_sq then
-            print("DEBUG: Moving toward point", i)
             self_player.path_index = i
 
             local inv_len = 1 / math.sqrt(dist_sq)
@@ -159,15 +159,13 @@ local function player_update(self_player, speed, compute_collision_list)
             }
         end
 
-        print("DEBUG: Reached point", i, "- advancing")
         i = i + 1
     end
 
-    print("DEBUG: All path points passed - checking REAL destination")
-
+    -- All path points passed
     self_player.path_index = last_index + 1
 
-    local current_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
+    local current_target = self_player.targets and self_player.targets[dest_index] or nil
     local is_reached = false
 
     if current_target then
@@ -175,8 +173,7 @@ local function player_update(self_player, speed, compute_collision_list)
             local dx = self_player.current_position.x - current_target.x
             local dy = self_player.current_position.y - current_target.y
             is_reached = (dx*dx + dy*dy <= threshold_sq)
-            print(string.format("DEBUG: Checking VECTOR3 target (520,180) | dist=%.2f | reached=%s", 
-                  math.sqrt(dx*dx + dy*dy), tostring(is_reached)))
+            print(string.format("DEBUG: Checking VECTOR3 | dist=%.2f | reached=%s", math.sqrt(dx*dx + dy*dy), tostring(is_reached)))
         else
             local state = map:get_map_state()
             local dest_pos = state.map_node_list[current_target].position
@@ -186,7 +183,7 @@ local function player_update(self_player, speed, compute_collision_list)
             print("DEBUG: Checking NODE", current_target, "dist=", math.sqrt(dx*dx + dy*dy))
         end
     else
-        print("DEBUG: No current_target!")
+        print("DEBUG: WARNING: No current_target! targets=", self_player.targets and "exists" or "nil")
     end
 
     if self_player.initial_angle then
@@ -196,7 +193,7 @@ local function player_update(self_player, speed, compute_collision_list)
 
     if is_reached then
         print("DEBUG: *** REAL DESTINATION REACHED ***")
-        -- destination logic (ONETIME, CYCLE, etc.)
+        -- Add your route logic here (ONETIME, CYCLE, etc.)
         local count = #self_player.destination_list
         local rt = self_player.route_type
         local should_continue = true
@@ -215,12 +212,10 @@ local function player_update(self_player, speed, compute_collision_list)
                 end
             elseif rt == constants.ROUTETYPE.CYCLE then
                 self_player.destination_index = (self_player.destination_index % count) + 1
-            -- add SHUFFLE and PATROL if needed
             end
         end
 
         if should_continue then
-            print("DEBUG: Moving to next destination")
             self_player = map:move_internal_initialize(self_player.current_position, self_player)
         end
 
@@ -233,7 +228,7 @@ local function player_update(self_player, speed, compute_collision_list)
         }
     end
 
-    print("DEBUG: Not at final destination yet - waiting")
+    print("DEBUG: Not at final destination yet")
     return {
         position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
         rotation = rotation,
@@ -266,7 +261,7 @@ function Player:update_destinations(destination_list, route_type)
 
     self.route_type = route_type
 
-    print("DEBUG: update_destinations called with", #destination_list, "items")
+    print("DEBUG: update_destinations called with", #destination_list, "items. targets count =", #targets or 0)
     self = self.map:move_internal_initialize(self.current_position, self)
 end
 
@@ -376,8 +371,6 @@ function Player:debug_draw_player(color, show_projection, show_directions, show_
                             show_snap_radius or false,
                             show_collision or false)
 end
-
--- ==================== Export ====================
 
 return {
     Player = Player,
