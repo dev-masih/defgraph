@@ -1,5 +1,5 @@
 -- defgraph/player.lua
--- Clean version with safe debug for projection + vector3
+-- Final fixed version with vector3 support
 
 local constants = require("defgraph.constants")
 local collision = require("defgraph.collision")
@@ -162,7 +162,7 @@ local function player_update(self_player, speed, compute_collision_list)
         i = i + 1
     end
 
-    -- All path points passed
+    -- All path points passed → check real destination
     self_player.path_index = last_index + 1
 
     local current_target = self_player.targets and self_player.targets[dest_index] or nil
@@ -182,8 +182,6 @@ local function player_update(self_player, speed, compute_collision_list)
             is_reached = (dx*dx + dy*dy <= threshold_sq)
             print("DEBUG: Checking NODE", current_target, "dist=", math.sqrt(dx*dx + dy*dy))
         end
-    else
-        print("DEBUG: WARNING: No current_target! targets=", self_player.targets and "exists" or "nil")
     end
 
     if self_player.initial_angle then
@@ -193,38 +191,41 @@ local function player_update(self_player, speed, compute_collision_list)
 
     if is_reached then
         print("DEBUG: *** REAL DESTINATION REACHED ***")
-        -- Add your route logic here (ONETIME, CYCLE, etc.)
+
         local count = #self_player.destination_list
         local rt = self_player.route_type
         local should_continue = true
         local is_finished = false
 
-        if count == 1 then
+        -- Advance destination_index first
+        if self_player.destination_index < count then
+            self_player.destination_index = self_player.destination_index + 1
+            print("DEBUG: Advancing to next destination index =", self_player.destination_index)
+        else
             should_continue = false
             is_finished = true
-        else
-            if rt == constants.ROUTETYPE.ONETIME then
-                if self_player.destination_index < count then
-                    self_player.destination_index = self_player.destination_index + 1
-                else
-                    should_continue = false
-                    is_finished = true
-                end
-            elseif rt == constants.ROUTETYPE.CYCLE then
-                self_player.destination_index = (self_player.destination_index % count) + 1
-            end
+            print("DEBUG: Route finished - this was the last destination")
         end
 
         if should_continue then
+            print("DEBUG: Continuing to next target - calling move_internal_initialize")
             self_player = map:move_internal_initialize(self_player.current_position, self_player)
         end
 
+        -- Build return result
+        local reached_target = self_player.targets and self_player.targets[self_player.destination_index - 1] or nil
+        local next_target    = self_player.targets and self_player.targets[self_player.destination_index] or nil
+
         return {
-            position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
-            rotation = rotation,
-            reached = true,
-            finished = is_finished,
-            collided = collided,
+            position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+            rotation                   = rotation,
+            reached_destination_id     = type(reached_target) == "number" and reached_target or nil,
+            to_destination_id          = type(next_target) == "number" and next_target or nil,
+            reached_destination_vector = type(reached_target) == "userdata" and reached_target or nil,
+            to_destination_vector      = type(next_target) == "userdata" and next_target or nil,
+            reached                    = true,
+            finished                   = is_finished,
+            collided                   = collided,
         }
     end
 
@@ -261,7 +262,7 @@ function Player:update_destinations(destination_list, route_type)
 
     self.route_type = route_type
 
-    print("DEBUG: update_destinations called with", #destination_list, "items. targets count =", #targets or 0)
+    print("DEBUG: update_destinations called with", #destination_list, "items")
     self = self.map:move_internal_initialize(self.current_position, self)
 end
 
