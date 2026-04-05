@@ -17,7 +17,7 @@ local function player_update(self_player, speed, compute_collision_list)
 
     local path       = self_player.path
     local path_index = self_player.path_index or 1
-    local dest_index = self_player.destination_index or 1
+    local dest_index = self_player.destination_index or 1   -- local copy
 
     print(string.format("DEBUG: [%s] pos=(%.1f, %.1f) | path=%d/%d | dest_idx=%d | targets=%s", 
           self_player.key or "?", 
@@ -35,6 +35,7 @@ local function player_update(self_player, speed, compute_collision_list)
                 self_player = map:move_internal_initialize(self_player.current_position, self_player)
                 path = self_player.path
                 path_index = self_player.path_index or 1
+                dest_index = self_player.destination_index or 1
             end
         end
     end
@@ -55,7 +56,7 @@ local function player_update(self_player, speed, compute_collision_list)
         }
     end
 
-    -- Rotation smoothing
+    -- Rotation smoothing (unchanged)
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
         if not self_player.initial_angle then return nil end
@@ -74,12 +75,11 @@ local function player_update(self_player, speed, compute_collision_list)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
-    -- Collision avoidance
+    -- Collision avoidance & collision list (unchanged - keep your existing code here)
     local function compute_collision_avoidance(dir_x, dir_y, speed)
         return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     end
 
-    -- Collision list
     local collided = {}
     if compute_collision_list and self_player.config.collision_enabled then
         local cfg = self_player.config
@@ -122,7 +122,7 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     ----------------------------------------------------------------------
-    -- Movement Loop
+    -- Movement Loop (unchanged)
     ----------------------------------------------------------------------
     local threshold_sq = (self_player.config.gameobject_threshold + 1) ^ 2
     local last_index = #path
@@ -193,11 +193,10 @@ local function player_update(self_player, speed, compute_collision_list)
         print("DEBUG: *** REAL DESTINATION REACHED ***")
 
         local count = #self_player.destination_list
-        local rt = self_player.route_type
         local should_continue = true
         local is_finished = false
 
-        -- Correct advancement
+        -- CORRECTED advancement - update the real field
         if self_player.destination_index and self_player.destination_index < count then
             self_player.destination_index = self_player.destination_index + 1
             print("DEBUG: Advancing to next destination index =", self_player.destination_index)
@@ -212,7 +211,7 @@ local function player_update(self_player, speed, compute_collision_list)
             self_player = map:move_internal_initialize(self_player.current_position, self_player)
         end
 
-        -- Safe result
+        -- Safe result using updated index
         local reached_target = self_player.targets and self_player.targets[dest_index] or nil
         local next_target    = self_player.targets and self_player.targets[self_player.destination_index] or nil
 
