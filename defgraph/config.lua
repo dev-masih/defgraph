@@ -9,6 +9,7 @@ PlayerConfig.__index = PlayerConfig
 local PLAYER_DEFAULTS = {
     gameobject_threshold = 2,
     allow_enter_on_route = true,
+    allow_exit_on_route  = true,          -- NEW
 
     path_curve_tightness = 4,
     path_curve_roundness = 3,
@@ -26,9 +27,12 @@ function PlayerConfig.new(options)
     local self = {
         gameobject_threshold = constants.default(options.gameobject_threshold, PLAYER_DEFAULTS.gameobject_threshold),
         allow_enter_on_route = constants.default(options.allow_enter_on_route, PLAYER_DEFAULTS.allow_enter_on_route),
+        allow_exit_on_route  = constants.default(options.allow_exit_on_route,  PLAYER_DEFAULTS.allow_exit_on_route),
+
         path_curve_tightness = constants.default(options.path_curve_tightness, PLAYER_DEFAULTS.path_curve_tightness),
         path_curve_roundness = constants.default(options.path_curve_roundness, PLAYER_DEFAULTS.path_curve_roundness),
         path_curve_max_distance_from_corner = constants.default(options.path_curve_max_distance_from_corner, PLAYER_DEFAULTS.path_curve_max_distance_from_corner),
+
         collision_enabled = constants.default(options.collision_enabled, PLAYER_DEFAULTS.collision_enabled),
         collision_radius  = constants.default(options.collision_radius, PLAYER_DEFAULTS.collision_radius),
         collision_groups  = constants.default(options.collision_groups, PLAYER_DEFAULTS.collision_groups),
@@ -58,6 +62,9 @@ function PlayerConfig:validate()
     -- Boolean validations
     assert(type(self.allow_enter_on_route) == "boolean",
         "PlayerConfig: allow_enter_on_route must be a boolean")
+
+    assert(type(self.allow_exit_on_route) == "boolean",
+        "PlayerConfig: allow_exit_on_route must be a boolean")
 
     assert(type(self.collision_enabled) == "boolean",
         "PlayerConfig: collision_enabled must be a boolean")

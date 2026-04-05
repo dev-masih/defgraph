@@ -12,7 +12,7 @@ Player.__index = Player
 -- ==================== Player Update (Main Logic) ====================
 
 local function player_update(self_player, speed, compute_collision_list)
-    compute_collision_list = compute_collision_list or false   -- default off for performance
+    compute_collision_list = compute_collision_list or false
 
     local map = self_player.map
     assert(map, "Player has no map assigned")
@@ -68,17 +68,35 @@ local function player_update(self_player, speed, compute_collision_list)
     ----------------------------------------------------------------------
     -- Helper to build return table
     ----------------------------------------------------------------------
-    local collided = {}   -- will be filled only when requested
+    local collided = {}
 
     local function make_result(reached_this_frame, reached_id, is_finished)
+        local current_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
+        local next_target    = self_player.targets and self_player.targets[self_player.destination_index + 1] or nil
+
+        local reached_vec = nil
+        local to_vec      = nil
+
+        if reached_this_frame then
+            if type(current_target) == "userdata" then
+                reached_vec = current_target
+            end
+        end
+
+        if type(next_target) == "userdata" then
+            to_vec = next_target
+        end
+
         return {
-            position               = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
-            rotation               = rotation,
-            reached_destination_id = reached_this_frame and reached_id or nil,
-            to_destination_id      = self_player.destination_list[self_player.destination_index],
-            reached                = reached_this_frame or false,
-            finished               = is_finished or false,
-            collided               = collided,          -- new field
+            position                 = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+            rotation                 = rotation,
+            reached_destination_id   = reached_this_frame and type(current_target) == "number" and current_target or nil,
+            to_destination_id        = type(next_target) == "number" and next_target or nil,
+            reached_destination_vector = reached_vec,
+            to_destination_vector    = to_vec,
+            reached                  = reached_this_frame or false,
+            finished                 = is_finished or false,
+            collided                 = collided,
         }
     end
 

@@ -688,26 +688,48 @@ end
 function Map:normalize_destination_list(list)
     assert(type(list) == "table", "destination_list must be a table")
 
-    local normalized = {}
+    local normalized = {}   -- only node IDs for pathfinding
+    local targets    = {}   -- mixed: node ID or vector3
+
     for i = 1, #list do
         local ref = list[i]
         local t = type(ref)
 
         if t == "number" then
             normalized[i] = ref
-        elseif t == "string" or t == "userdata" then
-            -- treat as node key
+            targets[i]    = ref
+
+        elseif t == "string" then
+            -- string = node key
             local node = get_map_state(self).node_registry[ref]
-            assert(node, "Unknown node key in destination_list: " .. tostring(ref))
+            assert(node, "Unknown node key: " .. tostring(ref))
             normalized[i] = node.id
+            targets[i]    = node.id
+
         elseif t == "table" and ref.id then
             -- node object
             normalized[i] = ref.id
+            targets[i]    = ref.id
+
+        elseif t == "userdata" then
+            -- Check if it's a vector3 (has .x and .y)
+            if ref.x and ref.y then
+                targets[i] = vmath.vector3(ref.x, ref.y, 0)
+                -- Do NOT add to normalized (it's not a node)
+            else
+                -- Unknown userdata → treat as node key (hash)
+                local node = get_map_state(self).node_registry[ref]
+                assert(node, "Unknown node key: " .. tostring(ref))
+                normalized[i] = node.id
+                targets[i]    = node.id
+            end
+
         else
             error("Invalid destination reference at index " .. i)
         end
     end
-    return normalized
+
+    return normalized, targets
 end
 
 function Map:get_nearest_node_from_groups(position, groups)
@@ -847,7 +869,7 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
     end
 
     player_config:validate()
-    destination_list = self:normalize_destination_list(destination_list)
+    local normalized, targets = self:normalize_destination_list(destination_list)
 
     local destination_id = 1
     local dest_count = #destination_list
@@ -863,8 +885,8 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
 
     local move_data = {
         map               = self,
-        destination_list  = destination_list,
-        destination_index = destination_id,
+        destination_list  = normalized,
+        targets           = targets,           -- NEW: mixed list
         route_type        = route_type,
         path_index        = 0,
         path              = {},

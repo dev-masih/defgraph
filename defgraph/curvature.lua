@@ -18,7 +18,6 @@ local function process_path_curvature(before, current, after, roundness,
     local R_after  = current / path_curve_tightness +
                      (path_curve_tightness - 1) / path_curve_tightness * after
 
-    -- Guard zero-length segments and reuse distances
     local bc_dist = constants.distance(before, current)
     local ca_dist = constants.distance(current, after)
 
@@ -41,15 +40,10 @@ local function process_path_curvature(before, current, after, roundness,
     end
 
     if roundness ~= 1 and roundness > 0 then
-        -- FIXED: Properly capture boundary points from deeper recursion levels
         local _, Qb, _ = process_path_curvature(Q_before, R_before, Q_after, roundness - 1,
-                               path_curve_tightness,
-                               path_curve_max_distance_from_corner,
-                               out_list)
+                               path_curve_tightness, path_curve_max_distance_from_corner, out_list)
         local _, _, Ra = process_path_curvature(R_before, Q_after, R_after, roundness - 1,
-                               path_curve_tightness,
-                               path_curve_max_distance_from_corner,
-                               out_list)
+                               path_curve_tightness, path_curve_max_distance_from_corner, out_list)
         return out_list, Qb, Ra
     else
         out_list[#out_list + 1] = R_before
@@ -58,30 +52,38 @@ local function process_path_curvature(before, current, after, roundness,
     end
 end
 
--- ==================== Movement Initialization ====================
+-- ==================== Movement Initialization (Full Implementation) ====================
 
 local function move_internal_initialize(self, source_position, move_data)
+    local targets = move_data.targets          -- mixed list: node IDs or vector3
+    local current_target = targets[move_data.destination_index]
+
+    -- Get nearest route entry point
     local near_result = self:calculate_to_nearest_route(source_position)
-    if not near_result or #move_data.destination_list == 0 then
+    if not near_result then
         move_data.path_index = 0
-        local path = move_data.path
-        for i = 1, #path do path[i] = nil end
+        move_data.path = {}
         move_data.path_node_ids = {}
-        move_data.path_version  = 0
+        move_data.path_version = 0
         return move_data
     end
+
+    -- Determine if current target is a node or a vector3
+    local graph_target = type(current_target) == "number" and current_target or nil
 
     local from_path, to_path
     local state = self:get_map_state()
     local map_route_list = state.map_route_list
+    local map_node_list  = state.map_node_list
 
-    if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
-        from_path = self:fetch_path(near_result.route_from_id,
-                                    move_data.destination_list[move_data.destination_index])
-    end
-    if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
-        to_path = self:fetch_path(near_result.route_to_id,
-                                  move_data.destination_list[move_data.destination_index])
+    -- Build graph path only if target is a real node
+    if graph_target then
+        if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
+            from_path = self:fetch_path(near_result.route_from_id, graph_target)
+        end
+        if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
+            to_path = self:fetch_path(near_result.route_to_id, graph_target)
+        end
     end
 
     local position_list = {}
@@ -90,13 +92,13 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
+    -- Enter on route if allowed
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
     end
 
-    local map_node_list = state.map_node_list
-
+    -- Add graph path (nodes only)
     if from_path or to_path then
         local from_distance = math.huge
         local to_distance   = math.huge
@@ -117,7 +119,6 @@ local function move_internal_initialize(self, source_position, move_data)
             node_ids_list[#node_ids_list + 1] = near_result.route_from_id
 
             local fp = from_path.path
-            -- SKIP the first node, it's the same as from_node_pos
             for i = 2, #fp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[fp[i]].position
@@ -129,7 +130,6 @@ local function move_internal_initialize(self, source_position, move_data)
             node_ids_list[#node_ids_list + 1] = near_result.route_to_id
 
             local tp = to_path.path
-            -- SKIP the first node, it's the same as to_node_pos
             for i = 2, #tp do
                 pos_count = pos_count + 1
                 position_list[pos_count] = map_node_list[tp[i]].position
@@ -138,44 +138,56 @@ local function move_internal_initialize(self, source_position, move_data)
         end
     end
 
+    -- Add the actual current target (vector3 or node position)
+    if current_target then
+        if type(current_target) == "userdata" then
+            -- This is a vector3 target
+            position_list[#position_list + 1] = current_target
+        else
+            -- This is a node
+            position_list[#position_list + 1] = map_node_list[current_target].position
+        end
+    end
+
+    -- Apply curvature if enabled
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
-    if move_data.config.path_curve_roundness ~= 0 and pos_count > 2 then
+    if move_data.config.path_curve_roundness ~= 0 and #position_list > 2 then
         path[1] = position_list[1]
         local path_count = 1
 
-        for i = 2, pos_count - 1 do
+        for i = 2, #position_list - 1 do
             local curve_temp = move_data._curve_temp or {}
             move_data._curve_temp = curve_temp
             for k = 1, #curve_temp do curve_temp[k] = nil end
 
-            local partial_position_list, Q_before, R_after =
-                process_path_curvature(position_list[i - 1], position_list[i], position_list[i + 1],
-                                       move_data.config.path_curve_roundness,
-                                       move_data.config.path_curve_tightness,
-                                       move_data.config.path_curve_max_distance_from_corner,
-                                       curve_temp)
+            local partial, Qb, Ra = process_path_curvature(
+                position_list[i-1], position_list[i], position_list[i+1],
+                move_data.config.path_curve_roundness,
+                move_data.config.path_curve_tightness,
+                move_data.config.path_curve_max_distance_from_corner,
+                curve_temp)
 
             if i == 2 then
                 path_count = path_count + 1
-                path[path_count] = Q_before
+                path[path_count] = Qb
             end
 
-            for k = 1, #partial_position_list do
+            for k = 1, #partial do
                 path_count = path_count + 1
-                path[path_count] = partial_position_list[k]
+                path[path_count] = partial[k]
             end
 
-            if i == pos_count - 1 then
+            if i == #position_list - 1 then
                 path_count = path_count + 1
-                path[path_count] = R_after
+                path[path_count] = Ra
             end
         end
 
-        path[#path + 1] = position_list[pos_count]
+        path[#path + 1] = position_list[#position_list]
     else
-        for i = 1, pos_count do
+        for i = 1, #position_list do
             path[i] = position_list[i]
         end
     end
@@ -187,7 +199,7 @@ local function move_internal_initialize(self, source_position, move_data)
     return move_data
 end
 
--- Export functions
+-- Export
 return {
-    move_internal_initialize   = move_internal_initialize,
+    move_internal_initialize = move_internal_initialize,
 }
