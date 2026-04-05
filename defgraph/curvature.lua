@@ -71,13 +71,14 @@ local function move_internal_initialize(self, source_position, move_data)
         return move_data
     end
 
-    local graph_target = type(current_target) == "number" and current_target or nil
+    local graph_target = (type(current_target) == "number") and current_target or nil
 
     local from_path, to_path
     local state = self:get_map_state()
     local map_route_list = state.map_route_list
     local map_node_list  = state.map_node_list
 
+    -- Only do graph pathfinding if current target is a node
     if graph_target then
         if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
             from_path = self:fetch_path(near_result.route_from_id, graph_target)
@@ -93,12 +94,14 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
+    -- Add projection point if needed (for entering the route)
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
         print("DEBUG: Added projection point")
     end
 
+    -- Add graph path only if we have a node target
     if from_path or to_path then
         local from_distance = math.huge
         local to_distance   = math.huge
@@ -136,22 +139,25 @@ local function move_internal_initialize(self, source_position, move_data)
                 node_ids_list[#node_ids_list + 1] = tp[j]
             end
         end
+
+        print("DEBUG: Added NODE", graph_target, "to path")
     end
 
-    -- CRITICAL: Add the actual current target
+    -- CRITICAL: Always add the actual current target (node or vector3)
     if current_target then
         if type(current_target) == "userdata" then
             print("DEBUG: Added VECTOR3 target to path")
             position_list[#position_list + 1] = current_target
         else
-            print("DEBUG: Added NODE", current_target, "to path")
+            -- For nodes we already added it above, but ensure it's there
+            print("DEBUG: Added NODE", current_target, "to path (final leg)")
             position_list[#position_list + 1] = map_node_list[current_target].position
         end
     else
         print("DEBUG: WARNING: No current_target!")
     end
 
-    -- Build final path
+    -- Build final path with optional curvature
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 

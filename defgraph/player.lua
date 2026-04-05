@@ -1,5 +1,5 @@
 -- defgraph/player.lua
--- Final fixed version with vector3 support
+-- Final fixed version - vector3 after node
 
 local constants = require("defgraph.constants")
 local collision = require("defgraph.collision")
@@ -197,8 +197,8 @@ local function player_update(self_player, speed, compute_collision_list)
         local should_continue = true
         local is_finished = false
 
-        -- Advance destination_index first
-        if self_player.destination_index < count then
+        -- Correct advancement
+        if self_player.destination_index and self_player.destination_index < count then
             self_player.destination_index = self_player.destination_index + 1
             print("DEBUG: Advancing to next destination index =", self_player.destination_index)
         else
@@ -208,12 +208,12 @@ local function player_update(self_player, speed, compute_collision_list)
         end
 
         if should_continue then
-            print("DEBUG: Continuing to next target - calling move_internal_initialize")
+            print("DEBUG: Continuing to next target (vector3) - calling move_internal_initialize")
             self_player = map:move_internal_initialize(self_player.current_position, self_player)
         end
 
-        -- Build return result
-        local reached_target = self_player.targets and self_player.targets[self_player.destination_index - 1] or nil
+        -- Safe result
+        local reached_target = self_player.targets and self_player.targets[dest_index] or nil
         local next_target    = self_player.targets and self_player.targets[self_player.destination_index] or nil
 
         return {
