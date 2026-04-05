@@ -55,12 +55,15 @@ end
 -- ==================== Movement Initialization (Full Implementation) ====================
 
 local function move_internal_initialize(self, source_position, move_data)
-    local targets = move_data.targets          -- mixed list: node IDs or vector3
-    local current_target = targets[move_data.destination_index]
+    local targets = move_data.targets
+    local dest_index = move_data.destination_index or 1
+    local current_target = targets and targets[dest_index] or nil
 
-    -- Get nearest route entry point
+    print("DEBUG: move_internal_initialize - dest_index=", dest_index, "current_target type =", type(current_target))
+
     local near_result = self:calculate_to_nearest_route(source_position)
     if not near_result then
+        print("DEBUG: No near_result")
         move_data.path_index = 0
         move_data.path = {}
         move_data.path_node_ids = {}
@@ -68,7 +71,6 @@ local function move_internal_initialize(self, source_position, move_data)
         return move_data
     end
 
-    -- Determine if current target is a node or a vector3
     local graph_target = type(current_target) == "number" and current_target or nil
 
     local from_path, to_path
@@ -76,7 +78,6 @@ local function move_internal_initialize(self, source_position, move_data)
     local map_route_list = state.map_route_list
     local map_node_list  = state.map_node_list
 
-    -- Build graph path only if target is a real node
     if graph_target then
         if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
             from_path = self:fetch_path(near_result.route_from_id, graph_target)
@@ -92,13 +93,12 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
-    -- Enter on route if allowed
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
+        print("DEBUG: Added projection point")
     end
 
-    -- Add graph path (nodes only)
     if from_path or to_path then
         local from_distance = math.huge
         local to_distance   = math.huge
@@ -119,10 +119,10 @@ local function move_internal_initialize(self, source_position, move_data)
             node_ids_list[#node_ids_list + 1] = near_result.route_from_id
 
             local fp = from_path.path
-            for i = 2, #fp do
+            for j = 2, #fp do
                 pos_count = pos_count + 1
-                position_list[pos_count] = map_node_list[fp[i]].position
-                node_ids_list[#node_ids_list + 1] = fp[i]
+                position_list[pos_count] = map_node_list[fp[j]].position
+                node_ids_list[#node_ids_list + 1] = fp[j]
             end
         else
             pos_count = pos_count + 1
@@ -130,26 +130,28 @@ local function move_internal_initialize(self, source_position, move_data)
             node_ids_list[#node_ids_list + 1] = near_result.route_to_id
 
             local tp = to_path.path
-            for i = 2, #tp do
+            for j = 2, #tp do
                 pos_count = pos_count + 1
-                position_list[pos_count] = map_node_list[tp[i]].position
-                node_ids_list[#node_ids_list + 1] = tp[i]
+                position_list[pos_count] = map_node_list[tp[j]].position
+                node_ids_list[#node_ids_list + 1] = tp[j]
             end
         end
     end
 
-    -- Add the actual current target (vector3 or node position)
+    -- CRITICAL: Add the actual current target
     if current_target then
         if type(current_target) == "userdata" then
-            -- This is a vector3 target
+            print("DEBUG: Added VECTOR3 target to path")
             position_list[#position_list + 1] = current_target
         else
-            -- This is a node
+            print("DEBUG: Added NODE", current_target, "to path")
             position_list[#position_list + 1] = map_node_list[current_target].position
         end
+    else
+        print("DEBUG: WARNING: No current_target!")
     end
 
-    -- Apply curvature if enabled
+    -- Build final path
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
@@ -191,6 +193,8 @@ local function move_internal_initialize(self, source_position, move_data)
             path[i] = position_list[i]
         end
     end
+
+    print("DEBUG: Final path length =", #path)
 
     move_data.path_index    = 1
     move_data.path_node_ids = node_ids_list

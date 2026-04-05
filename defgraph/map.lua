@@ -688,7 +688,7 @@ end
 function Map:normalize_destination_list(list)
     assert(type(list) == "table", "destination_list must be a table")
 
-    local normalized = {}   -- only node IDs for pathfinding
+    local normalized = {}   -- only node IDs
     local targets    = {}   -- mixed: node ID or vector3
 
     for i = 1, #list do
@@ -700,29 +700,26 @@ function Map:normalize_destination_list(list)
             targets[i]    = ref
 
         elseif t == "string" then
-            -- string = node key
             local node = get_map_state(self).node_registry[ref]
             assert(node, "Unknown node key: " .. tostring(ref))
             normalized[i] = node.id
             targets[i]    = node.id
 
         elseif t == "table" and ref.id then
-            -- node object
             normalized[i] = ref.id
             targets[i]    = ref.id
 
+        elseif t == "userdata" and ref.x and ref.y then
+            -- Vector3 - this is the important case
+            targets[i] = vmath.vector3(ref.x, ref.y, 0)
+            -- Do NOT add to normalized
+
         elseif t == "userdata" then
-            -- Check if it's a vector3 (has .x and .y)
-            if ref.x and ref.y then
-                targets[i] = vmath.vector3(ref.x, ref.y, 0)
-                -- Do NOT add to normalized (it's not a node)
-            else
-                -- Unknown userdata → treat as node key (hash)
-                local node = get_map_state(self).node_registry[ref]
-                assert(node, "Unknown node key: " .. tostring(ref))
-                normalized[i] = node.id
-                targets[i]    = node.id
-            end
+            -- Other userdata (e.g. hash) - treat as node key
+            local node = get_map_state(self).node_registry[ref]
+            assert(node, "Unknown node key: " .. tostring(ref))
+            normalized[i] = node.id
+            targets[i]    = node.id
 
         else
             error("Invalid destination reference at index " .. i)
