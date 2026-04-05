@@ -62,7 +62,6 @@ local function move_internal_initialize(self, source_position, move_data)
     print("DEBUG: move_internal_initialize - dest_index=", dest_index, "current_target type =", type(current_target))
 
     if not current_target then
-        print("DEBUG: No current_target")
         move_data.path = {source_position}
         move_data.path_index = 1
         return move_data
@@ -73,8 +72,8 @@ local function move_internal_initialize(self, source_position, move_data)
 
     local near_result = self:calculate_to_nearest_route(source_position)
     if not near_result then
-        print("DEBUG: No near_result from source")
-        move_data.path = {source_position}
+        print("DEBUG: No near_result - direct to target")
+        move_data.path = {source_position, current_target}
         move_data.path_index = 1
         return move_data
     end
@@ -89,15 +88,15 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
-    -- Entry projection
+    -- Stronger entry projection (helps when coming from previous vector3)
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
-        print("DEBUG: Added entry projection point")
+        print("DEBUG: Added entry projection point (re-entering graph)")
     end
 
-    if graph_target then
-        -- === NODE target ===
+    if not is_vector then
+        -- NODE target - normal graph path (keep your original working logic)
         local from_path, to_path
 
         if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
@@ -144,16 +143,15 @@ local function move_internal_initialize(self, source_position, move_data)
         end
 
     else
-        -- === VECTOR3 target ===
+        -- VECTOR3 target - this part worked before
         local target_vec = current_target
         local exit_near = self:calculate_to_nearest_route(target_vec)
 
-        print("DEBUG: Vector3 projection - exit_near =", exit_near and "found (dist="..exit_near.distance..")" or "nil")
+        print("DEBUG: Vector3 projection - exit_near found:", exit_near ~= nil)
 
         if exit_near then
             local from_path, to_path
 
-            -- Try to connect from current route to the exit route
             if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
                 from_path = self:fetch_path(near_result.route_from_id, exit_near.route_from_id)
             end
@@ -195,24 +193,17 @@ local function move_internal_initialize(self, source_position, move_data)
                     end
                 end
                 print("DEBUG: Added graph path toward vector3 projection")
-            else
-                print("DEBUG: No path found from current route to vector3 projection route")
             end
 
-            -- Exit projection (if allowed)
             if move_data.config.allow_exit_on_route and exit_near.distance > move_data.config.gameobject_threshold + 1 then
                 pos_count = pos_count + 1
                 position_list[pos_count] = exit_near.position_on_route
                 print("DEBUG: Added exit projection point toward vector3")
-            else
-                print("DEBUG: No exit projection (allow_exit_on_route=", move_data.config.allow_exit_on_route, ")")
             end
-        else
-            print("DEBUG: No exit_near projection found for vector3")
         end
     end
 
-    -- Always add the actual final target
+    -- Final target
     if is_vector then
         print("DEBUG: Added VECTOR3 target to path")
         position_list[#position_list + 1] = current_target

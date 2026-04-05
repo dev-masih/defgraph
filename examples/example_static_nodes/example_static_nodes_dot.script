@@ -8,7 +8,7 @@ function init(self)
 	local config = defgraph.PlayerConfig.new({
 		gameobject_threshold = 3,
 		allow_enter_on_route = true,
-		allow_exit_on_route = false,
+		allow_exit_on_route = true,
 		path_curve_tightness = 3,
 		path_curve_roundness = 3,
 		path_curve_max_distance_from_corner = 15,
@@ -31,14 +31,28 @@ end
 
 function update(self, dt)
 	-- defgraph player calculation loop
-	self.update_result = self.player:update(50 * dt, true)
+	self.update_result = self.player:update(100 * dt, true)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)
 
 	-- you can check if go reached to the destination
-	if self.update_result.reached and self.update_result.reached_destination_id then
-		print("I'm at destination id : " .. self.update_result.reached_destination_id)
+	if self.update_result.reached then
+		if self.update_result.reached_destination_id then
+			print("I'm at destination id : " .. self.update_result.reached_destination_id)
+		elseif self.update_result.reached_destination_vector then
+			print("I'm at destination vector : " .. self.update_result.reached_destination_vector)
+		end
+	end
+
+	print("Heading to : " .. (self.update_result.to_destination_id or "nil") .. " : " .. (self.update_result.to_destination_vector or "nil"))
+
+	if self.update_result.finished then
+		if self.update_result.reached_destination_id then
+			print("Finished destination id : " .. self.update_result.reached_destination_id)
+		elseif self.update_result.reached_destination_vector then
+			print("Finished destination vector : " .. self.update_result.reached_destination_vector)
+		end
 	end
 
 	if self.update_result.collided and #self.update_result.collided ~= 0 then
