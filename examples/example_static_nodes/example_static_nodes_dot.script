@@ -8,6 +8,7 @@ function init(self)
 	local config = defgraph.PlayerConfig.new({
 		gameobject_threshold = 3,
 		allow_enter_on_route = true,
+		allow_exit_on_route = false,
 		path_curve_tightness = 3,
 		path_curve_roundness = 3,
 		path_curve_max_distance_from_corner = 15,

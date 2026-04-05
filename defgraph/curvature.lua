@@ -61,32 +61,27 @@ local function move_internal_initialize(self, source_position, move_data)
 
     print("DEBUG: move_internal_initialize - dest_index=", dest_index, "current_target type =", type(current_target))
 
-    local near_result = self:calculate_to_nearest_route(source_position)
-    if not near_result then
-        print("DEBUG: No near_result")
-        move_data.path_index = 0
-        move_data.path = {}
-        move_data.path_node_ids = {}
-        move_data.path_version = 0
+    if not current_target then
+        print("DEBUG: No current_target")
+        move_data.path = {source_position}
+        move_data.path_index = 1
         return move_data
     end
 
-    local graph_target = (type(current_target) == "number") and current_target or nil
+    local is_vector = type(current_target) == "userdata"
+    local graph_target = is_vector and nil or current_target
 
-    local from_path, to_path
-    local state = self:get_map_state()
-    local map_route_list = state.map_route_list
-    local map_node_list  = state.map_node_list
-
-    -- Only do graph pathfinding if current target is a node
-    if graph_target then
-        if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
-            from_path = self:fetch_path(near_result.route_from_id, graph_target)
-        end
-        if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
-            to_path = self:fetch_path(near_result.route_to_id, graph_target)
-        end
+    local near_result = self:calculate_to_nearest_route(source_position)
+    if not near_result then
+        print("DEBUG: No near_result from source")
+        move_data.path = {source_position}
+        move_data.path_index = 1
+        return move_data
     end
+
+    local state = self:get_map_state()
+    local map_node_list  = state.map_node_list
+    local map_route_list = state.map_route_list
 
     local position_list = {}
     local node_ids_list = {}
@@ -94,77 +89,145 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
-    -- Add projection point if needed (for entering the route)
+    -- Entry projection
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
         position_list[pos_count] = near_result.position_on_route
-        print("DEBUG: Added projection point")
+        print("DEBUG: Added entry projection point")
     end
 
-    -- Add graph path only if we have a node target
-    if from_path or to_path then
-        local from_distance = math.huge
-        local to_distance   = math.huge
+    if graph_target then
+        -- === NODE target ===
+        local from_path, to_path
 
-        local from_node_pos = map_node_list[near_result.route_from_id].position
-        local to_node_pos   = map_node_list[near_result.route_to_id].position
-
-        if from_path then
-            from_distance = from_path.distance + constants.distance(source_position, from_node_pos)
+        if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
+            from_path = self:fetch_path(near_result.route_from_id, graph_target)
         end
-        if to_path then
-            to_distance = to_path.distance + constants.distance(source_position, to_node_pos)
+        if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
+            to_path = self:fetch_path(near_result.route_to_id, graph_target)
         end
 
-        if from_distance <= to_distance then
-            pos_count = pos_count + 1
-            position_list[pos_count] = from_node_pos
-            node_ids_list[#node_ids_list + 1] = near_result.route_from_id
+        if from_path or to_path then
+            local from_distance = math.huge
+            local to_distance   = math.huge
 
-            local fp = from_path.path
-            for j = 2, #fp do
+            local from_node_pos = map_node_list[near_result.route_from_id].position
+            local to_node_pos   = map_node_list[near_result.route_to_id].position
+
+            if from_path then from_distance = from_path.distance + constants.distance(source_position, from_node_pos) end
+            if to_path then to_distance = to_path.distance + constants.distance(source_position, to_node_pos) end
+
+            if from_distance <= to_distance then
                 pos_count = pos_count + 1
-                position_list[pos_count] = map_node_list[fp[j]].position
-                node_ids_list[#node_ids_list + 1] = fp[j]
-            end
-        else
-            pos_count = pos_count + 1
-            position_list[pos_count] = to_node_pos
-            node_ids_list[#node_ids_list + 1] = near_result.route_to_id
+                position_list[pos_count] = from_node_pos
+                node_ids_list[#node_ids_list + 1] = near_result.route_from_id
 
-            local tp = to_path.path
-            for j = 2, #tp do
+                local fp = from_path.path
+                for j = 2, #fp do
+                    pos_count = pos_count + 1
+                    position_list[pos_count] = map_node_list[fp[j]].position
+                    node_ids_list[#node_ids_list + 1] = fp[j]
+                end
+            else
                 pos_count = pos_count + 1
-                position_list[pos_count] = map_node_list[tp[j]].position
-                node_ids_list[#node_ids_list + 1] = tp[j]
+                position_list[pos_count] = to_node_pos
+                node_ids_list[#node_ids_list + 1] = near_result.route_to_id
+
+                local tp = to_path.path
+                for j = 2, #tp do
+                    pos_count = pos_count + 1
+                    position_list[pos_count] = map_node_list[tp[j]].position
+                    node_ids_list[#node_ids_list + 1] = tp[j]
+                end
             end
+            print("DEBUG: Added graph path to NODE", graph_target)
         end
 
-        print("DEBUG: Added NODE", graph_target, "to path")
-    end
-
-    -- CRITICAL: Always add the actual current target (node or vector3)
-    if current_target then
-        if type(current_target) == "userdata" then
-            print("DEBUG: Added VECTOR3 target to path")
-            position_list[#position_list + 1] = current_target
-        else
-            -- For nodes we already added it above, but ensure it's there
-            print("DEBUG: Added NODE", current_target, "to path (final leg)")
-            position_list[#position_list + 1] = map_node_list[current_target].position
-        end
     else
-        print("DEBUG: WARNING: No current_target!")
+        -- === VECTOR3 target ===
+        local target_vec = current_target
+        local exit_near = self:calculate_to_nearest_route(target_vec)
+
+        print("DEBUG: Vector3 projection - exit_near =", exit_near and "found (dist="..exit_near.distance..")" or "nil")
+
+        if exit_near then
+            local from_path, to_path
+
+            -- Try to connect from current route to the exit route
+            if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
+                from_path = self:fetch_path(near_result.route_from_id, exit_near.route_from_id)
+            end
+            if map_route_list[near_result.route_from_id] and map_route_list[near_result.route_from_id][near_result.route_to_id] then
+                to_path = self:fetch_path(near_result.route_to_id, exit_near.route_from_id)
+            end
+
+            if from_path or to_path then
+                local from_distance = math.huge
+                local to_distance   = math.huge
+
+                local from_node_pos = map_node_list[near_result.route_from_id].position
+                local to_node_pos   = map_node_list[near_result.route_to_id].position
+
+                if from_path then from_distance = from_path.distance + constants.distance(source_position, from_node_pos) end
+                if to_path then to_distance = to_path.distance + constants.distance(source_position, to_node_pos) end
+
+                if from_distance <= to_distance then
+                    pos_count = pos_count + 1
+                    position_list[pos_count] = from_node_pos
+                    node_ids_list[#node_ids_list + 1] = near_result.route_from_id
+
+                    local fp = from_path.path
+                    for j = 2, #fp do
+                        pos_count = pos_count + 1
+                        position_list[pos_count] = map_node_list[fp[j]].position
+                        node_ids_list[#node_ids_list + 1] = fp[j]
+                    end
+                else
+                    pos_count = pos_count + 1
+                    position_list[pos_count] = to_node_pos
+                    node_ids_list[#node_ids_list + 1] = near_result.route_to_id
+
+                    local tp = to_path.path
+                    for j = 2, #tp do
+                        pos_count = pos_count + 1
+                        position_list[pos_count] = map_node_list[tp[j]].position
+                        node_ids_list[#node_ids_list + 1] = tp[j]
+                    end
+                end
+                print("DEBUG: Added graph path toward vector3 projection")
+            else
+                print("DEBUG: No path found from current route to vector3 projection route")
+            end
+
+            -- Exit projection (if allowed)
+            if move_data.config.allow_exit_on_route and exit_near.distance > move_data.config.gameobject_threshold + 1 then
+                pos_count = pos_count + 1
+                position_list[pos_count] = exit_near.position_on_route
+                print("DEBUG: Added exit projection point toward vector3")
+            else
+                print("DEBUG: No exit projection (allow_exit_on_route=", move_data.config.allow_exit_on_route, ")")
+            end
+        else
+            print("DEBUG: No exit_near projection found for vector3")
+        end
     end
 
-    -- Build final path with optional curvature
+    -- Always add the actual final target
+    if is_vector then
+        print("DEBUG: Added VECTOR3 target to path")
+        position_list[#position_list + 1] = current_target
+    else
+        print("DEBUG: Added NODE", current_target, "to path (final leg)")
+        position_list[#position_list + 1] = map_node_list[current_target].position
+    end
+
+    -- Build path
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
     if move_data.config.path_curve_roundness ~= 0 and #position_list > 2 then
         path[1] = position_list[1]
         local path_count = 1
-
         for i = 2, #position_list - 1 do
             local curve_temp = move_data._curve_temp or {}
             move_data._curve_temp = curve_temp
@@ -192,7 +255,6 @@ local function move_internal_initialize(self, source_position, move_data)
                 path[path_count] = Ra
             end
         end
-
         path[#path + 1] = position_list[#position_list]
     else
         for i = 1, #position_list do
