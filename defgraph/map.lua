@@ -688,7 +688,7 @@ end
 function Map:normalize_destination_list(list)
     assert(type(list) == "table", "destination_list must be a table")
 
-    local normalized = {}   -- only node IDs
+    local normalized = {}   -- only node IDs for pathfinding
     local targets    = {}   -- mixed: node ID or vector3
 
     for i = 1, #list do
@@ -698,34 +698,24 @@ function Map:normalize_destination_list(list)
         if t == "number" then
             normalized[i] = ref
             targets[i]    = ref
-
         elseif t == "string" then
             local node = get_map_state(self).node_registry[ref]
             assert(node, "Unknown node key: " .. tostring(ref))
             normalized[i] = node.id
             targets[i]    = node.id
-
         elseif t == "table" and ref.id then
             normalized[i] = ref.id
             targets[i]    = ref.id
-
         elseif t == "userdata" and ref.x and ref.y then
-            -- Vector3 - this is the important case
+            -- vector3
             targets[i] = vmath.vector3(ref.x, ref.y, 0)
-            -- Do NOT add to normalized
-
-        elseif t == "userdata" then
-            -- Other userdata (e.g. hash) - treat as node key
-            local node = get_map_state(self).node_registry[ref]
-            assert(node, "Unknown node key: " .. tostring(ref))
-            normalized[i] = node.id
-            targets[i]    = node.id
-
+            -- do NOT put in normalized
         else
             error("Invalid destination reference at index " .. i)
         end
     end
 
+    print("DEBUG: normalize_destination_list - #normalized =", #normalized, " | #targets =", #targets)
     return normalized, targets
 end
 
@@ -866,10 +856,12 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
     end
 
     player_config:validate()
+
+    -- IMPORTANT: normalize returns BOTH normalized (nodes only) and targets (mixed)
     local normalized, targets = self:normalize_destination_list(destination_list)
 
     local destination_id = 1
-    local dest_count = #destination_list
+    local dest_count = #normalized   -- use normalized length for safety
 
     if route_type == constants.ROUTETYPE.SHUFFLE and dest_count > 1 then
         destination_id = math.random(dest_count)
@@ -882,30 +874,31 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
 
     local move_data = {
         map               = self,
-        destination_list  = normalized,
-        targets           = targets,           -- NEW: mixed list
+        destination_list  = normalized,      -- nodes only for pathfinding
+        targets           = targets,         -- mixed: nodes + vector3 (CRITICAL)
+        destination_index = destination_id,
         route_type        = route_type,
         path_index        = 0,
         path              = {},
         path_node_ids     = {},
         path_version      = 0,
-        patrol_direction  = 1,  -- used for PATROL route type
+        patrol_direction  = 1,
 
-        current_position    = initial_position,
-        current_face_vector = initial_face_vector,
+        current_position    = vmath.vector3(initial_position.x, initial_position.y, 0),
+        current_face_vector = initial_face_vector or vmath.vector3(1, 0, 0),
         initial_angle       = initial_angle,
 
         config = player_config
     }
 
-    local player_obj = setmetatable(move_data, player.Player)
+    local player = setmetatable(move_data, player.Player)
 
     state.player_id_iter = state.player_id_iter + 1
-    player_obj.id = state.player_id_iter
-    player_obj.key = key
-    player_obj.groups = {}
+    player.id = state.player_id_iter
+    player.key = key
 
-    state.players[key] = player_obj
+    state.players[key] = player
+    player.groups = {}
 
     if groups then
         for _, group in ipairs(groups) do
@@ -913,7 +906,9 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
         end
     end
 
-    return self:move_internal_initialize(initial_position, move_data)
+    print("DEBUG: create_player - #normalized =", #normalized, "| #targets =", #targets)
+
+    return self:move_internal_initialize(initial_position, player)
 end
 
 -- ==================== Destroy ====================

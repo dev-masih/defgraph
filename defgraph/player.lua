@@ -15,6 +15,14 @@ local function player_update(self_player, speed, compute_collision_list)
     local map = self_player.map
     assert(map, "Player has no map assigned")
 
+    -- Force fix for nil index
+    if not self_player.destination_index or self_player.destination_index < 1 then
+        self_player.destination_index = 1
+    end
+    print("DEBUG: FIXED - destination_index =", self_player.destination_index, 
+          " | #destination_list =", #self_player.destination_list or 0,
+          " | #targets =", self_player.targets and #self_player.targets or 0)
+
     local path       = self_player.path
     local path_index = self_player.path_index or 1
     local dest_index = self_player.destination_index or 1   -- local copy
@@ -192,11 +200,12 @@ local function player_update(self_player, speed, compute_collision_list)
     if is_reached then
         print("DEBUG: *** REAL DESTINATION REACHED ***")
 
-        local count = #self_player.destination_list
+        local count = #self_player.targets or 0   -- Use targets, not destination_list!
+        print("DEBUG:   using #targets =", count, " | destination_index =", self_player.destination_index)
+
         local should_continue = true
         local is_finished = false
 
-        -- CORRECTED advancement - update the real field
         if self_player.destination_index and self_player.destination_index < count then
             self_player.destination_index = self_player.destination_index + 1
             print("DEBUG: Advancing to next destination index =", self_player.destination_index)
@@ -211,7 +220,7 @@ local function player_update(self_player, speed, compute_collision_list)
             self_player = map:move_internal_initialize(self_player.current_position, self_player)
         end
 
-        -- Safe result using updated index
+        -- Build result
         local reached_target = self_player.targets and self_player.targets[dest_index] or nil
         local next_target    = self_player.targets and self_player.targets[self_player.destination_index] or nil
 
@@ -244,16 +253,19 @@ end
 
 function Player:update_destinations(destination_list, route_type)
     assert(destination_list, "Player:update_destinations: destination_list is required")
+    assert(type(destination_list) == "table", "destination_list must be a table")
+
     route_type = constants.default(route_type, self.route_type or constants.ROUTETYPE.ONETIME)
 
+    -- IMPORTANT: get BOTH tables from normalize
     local normalized, targets = self.map:normalize_destination_list(destination_list)
 
-    self.destination_list = normalized
-    self.targets = targets
+    self.destination_list = normalized      -- nodes only
+    self.targets          = targets         -- mixed nodes + vector3 (CRITICAL)
 
-    local count = #self.destination_list
+    local count = #normalized
     self.destination_index = 1
-    self.patrol_direction = 1
+    self.patrol_direction  = 1
 
     if route_type == constants.ROUTETYPE.SHUFFLE and count > 1 then
         self.destination_index = math.random(count)
@@ -261,7 +273,9 @@ function Player:update_destinations(destination_list, route_type)
 
     self.route_type = route_type
 
-    print("DEBUG: update_destinations called with", #destination_list, "items")
+    print("DEBUG: update_destinations - #normalized =", #normalized, "| #targets =", #targets)
+
+    -- Rebuild path with the new destinations
     self = self.map:move_internal_initialize(self.current_position, self)
 end
 
