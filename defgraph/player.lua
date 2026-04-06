@@ -15,56 +15,53 @@ local function player_update(self_player, speed, compute_collision_list)
     local map = self_player.map
     assert(map, "Player has no map assigned")
 
-    -- Force fix for nil index
+    -- Ensure valid destination_index
     if not self_player.destination_index or self_player.destination_index < 1 then
         self_player.destination_index = 1
     end
-    print("DEBUG: FIXED - destination_index =", self_player.destination_index, 
-          " | #destination_list =", #self_player.destination_list or 0,
-          " | #targets =", self_player.targets and #self_player.targets or 0)
 
     local path       = self_player.path
     local path_index = self_player.path_index or 1
-    local dest_index = self_player.destination_index or 1   -- local copy
+    local dest_index = self_player.destination_index
 
-    print(string.format("DEBUG: [%s] pos=(%.1f, %.1f) | path=%d/%d | dest_idx=%d | targets=%s", 
-          self_player.key or "?", 
-          self_player.current_position.x or 0, 
-          self_player.current_position.y or 0,
-          path_index, #path or 0, dest_index, 
-          self_player.targets and "yes" or "NIL"))
+    -- Helper to get next target (used by all return paths)
+    local function get_next_target()
+        return self_player.targets and self_player.targets[self_player.destination_index] or nil
+    end
 
-    -- Path invalidation
+    -- Path invalidation check
     if path_index > 1 then
         local ids = self_player.path_node_ids
         if ids and #ids > 0 then
             if map:compute_path_version(ids) ~= self_player.path_version then
-                print("DEBUG: Path invalidated - recalculating")
                 self_player = map:move_internal_initialize(self_player.current_position, self_player)
                 path = self_player.path
                 path_index = self_player.path_index or 1
-                dest_index = self_player.destination_index or 1
             end
         end
     end
 
     if not path or #path == 0 then
-        print("DEBUG: No path")
         local rotation = nil
         if self_player.initial_angle then
             local cf = self_player.current_face_vector
             rotation = vmath.quat_rotation_z(math.atan2(cf.y, cf.x) - self_player.initial_angle)
         end
+        local next_target = get_next_target()
         return {
-            position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
-            rotation = rotation,
-            reached = false,
-            finished = true,
-            collided = {},
+            position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+            rotation                   = rotation,
+            reached_destination_id     = nil,
+            to_destination_id          = type(next_target) == "number" and next_target or nil,
+            reached_destination_vector = nil,
+            to_destination_vector      = type(next_target) == "userdata" and next_target or nil,
+            reached                    = false,
+            finished                   = true,
+            collided                   = {},
         }
     end
 
-    -- Rotation smoothing (unchanged)
+    -- Rotation smoothing
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
         if not self_player.initial_angle then return nil end
@@ -83,7 +80,7 @@ local function player_update(self_player, speed, compute_collision_list)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
-    -- Collision avoidance & collision list (unchanged - keep your existing code here)
+    -- Collision avoidance & collision list
     local function compute_collision_avoidance(dir_x, dir_y, speed)
         return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     end
@@ -123,14 +120,18 @@ local function player_update(self_player, speed, compute_collision_list)
                 local dx = px - other.current_position.x
                 local dy = py - other.current_position.y
                 if dx*dx + dy*dy <= radius_sq then
-                    table.insert(collided, {id = other.id, key = other.key, groups = other:get_groups() or {}})
+                    table.insert(collided, {
+                        id = other.id,
+                        key = other.key,
+                        groups = other:get_groups() or {}
+                    })
                 end
             end
         end
     end
 
     ----------------------------------------------------------------------
-    -- Movement Loop (unchanged)
+    -- Main movement loop
     ----------------------------------------------------------------------
     local threshold_sq = (self_player.config.gameobject_threshold + 1) ^ 2
     local last_index = #path
@@ -158,19 +159,24 @@ local function player_update(self_player, speed, compute_collision_list)
             self_player.current_position.x = self_player.current_position.x + dir_x * speed
             self_player.current_position.y = self_player.current_position.y + dir_y * speed
 
+            local next_target = get_next_target()
             return {
-                position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
-                rotation = rotation,
-                reached = false,
-                finished = false,
-                collided = collided,
+                position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+                rotation                   = rotation,
+                reached_destination_id     = nil,
+                to_destination_id          = type(next_target) == "number" and next_target or nil,
+                reached_destination_vector = nil,
+                to_destination_vector      = type(next_target) == "userdata" and next_target or nil,
+                reached                    = false,
+                finished                   = false,
+                collided                   = collided,
             }
         end
 
         i = i + 1
     end
 
-    -- All path points passed → check real destination
+    -- All path points passed → check if real destination reached
     self_player.path_index = last_index + 1
 
     local current_target = self_player.targets and self_player.targets[dest_index] or nil
@@ -181,14 +187,12 @@ local function player_update(self_player, speed, compute_collision_list)
             local dx = self_player.current_position.x - current_target.x
             local dy = self_player.current_position.y - current_target.y
             is_reached = (dx*dx + dy*dy <= threshold_sq)
-            print(string.format("DEBUG: Checking VECTOR3 | dist=%.2f | reached=%s", math.sqrt(dx*dx + dy*dy), tostring(is_reached)))
         else
             local state = map:get_map_state()
             local dest_pos = state.map_node_list[current_target].position
             local dx = self_player.current_position.x - dest_pos.x
             local dy = self_player.current_position.y - dest_pos.y
             is_reached = (dx*dx + dy*dy <= threshold_sq)
-            print("DEBUG: Checking NODE", current_target, "dist=", math.sqrt(dx*dx + dy*dy))
         end
     end
 
@@ -198,31 +202,33 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     if is_reached then
-        print("DEBUG: *** REAL DESTINATION REACHED ***")
-
-        local count = #self_player.targets or 0   -- Use targets, not destination_list!
-        print("DEBUG:   using #targets =", count, " | destination_index =", self_player.destination_index)
+        local count = #self_player.targets or 0
+        local old_index = self_player.destination_index or 1
 
         local should_continue = true
         local is_finished = false
 
         if self_player.destination_index and self_player.destination_index < count then
             self_player.destination_index = self_player.destination_index + 1
-            print("DEBUG: Advancing to next destination index =", self_player.destination_index)
         else
             should_continue = false
             is_finished = true
-            print("DEBUG: Route finished - this was the last destination")
         end
 
         if should_continue then
-            print("DEBUG: Continuing to next target (vector3) - calling move_internal_initialize")
-            self_player = map:move_internal_initialize(self_player.current_position, self_player)
+            local updated_data = map:move_internal_initialize(self_player.current_position, self_player)
+            
+            -- Persist updated state (necessary for destination_index and path to survive to next frame)
+            for k, v in pairs(updated_data) do
+                self_player[k] = v
+            end
+            if updated_data.destination_index then
+                self_player.destination_index = updated_data.destination_index
+            end
         end
 
-        -- Build result
-        local reached_target = self_player.targets and self_player.targets[dest_index] or nil
-        local next_target    = self_player.targets and self_player.targets[self_player.destination_index] or nil
+        local reached_target = self_player.targets and self_player.targets[old_index] or nil
+        local next_target    = get_next_target()
 
         return {
             position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
@@ -237,13 +243,19 @@ local function player_update(self_player, speed, compute_collision_list)
         }
     end
 
-    print("DEBUG: Not at final destination yet")
+    -- Still moving toward current destination
+    local next_target = get_next_target()
+
     return {
-        position = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
-        rotation = rotation,
-        reached = false,
-        finished = false,
-        collided = collided,
+        position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+        rotation                   = rotation,
+        reached_destination_id     = nil,
+        to_destination_id          = type(next_target) == "number" and next_target or nil,
+        reached_destination_vector = nil,
+        to_destination_vector      = type(next_target) == "userdata" and next_target or nil,
+        reached                    = false,
+        finished                   = false,
+        collided                   = collided,
     }
 end
 
