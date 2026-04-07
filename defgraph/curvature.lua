@@ -138,7 +138,6 @@ local function move_internal_initialize(self, source_position, move_data)
         else
             -- Node unreachable → go to nearest projection on current route and stop
             reachable = false
-            print("DEBUG: Node unreachable → going to nearest projection on current route")
             if move_data.config.allow_enter_on_route and near_result.distance > move_data.config.gameobject_threshold + 1 then
                 pos_count = pos_count + 1
                 position_list[pos_count] = near_result.position_on_route
@@ -167,6 +166,7 @@ local function move_internal_initialize(self, source_position, move_data)
                     position_list[pos_count] = exit_near.position_on_route
                 end
             else
+                -- 4-way comparison
                 local path_aa = map_route_list[current_a] and self:fetch_path(current_a, exit_a) or nil
                 local path_ab = map_route_list[current_a] and self:fetch_path(current_a, exit_b) or nil
                 local path_ba = map_route_list[current_b] and self:fetch_path(current_b, exit_a) or nil
@@ -198,9 +198,8 @@ local function move_internal_initialize(self, source_position, move_data)
                         position_list[pos_count] = exit_near.position_on_route
                     end
                 else
-                    -- Vector3 unreachable → go to nearest projection on CURRENT route and stop
+                    -- Unreachable → nearest projection on current route and stop
                     reachable = false
-                    print("DEBUG: Vector3 unreachable → going to nearest projection on current route")
                     if move_data.config.allow_exit_on_route and near_result.distance > move_data.config.gameobject_threshold + 1 then
                         pos_count = pos_count + 1
                         position_list[pos_count] = near_result.position_on_route
@@ -210,7 +209,7 @@ local function move_internal_initialize(self, source_position, move_data)
         end
     end
 
-    -- Final target ONLY if reachable
+    -- Final target only if reachable
     if reachable then
         pos_count = pos_count + 1
         if is_vector then
