@@ -85,9 +85,6 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
-    print("DEBUG: ENTER - dest_index=", dest_index, "is_vector=", is_vector)
-    print("DEBUG:   Current route:", near_result.route_from_id, "↔", near_result.route_to_id)
-
     -- Entry projection when starting off-route
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
@@ -95,7 +92,7 @@ local function move_internal_initialize(self, source_position, move_data)
     end
 
     if not is_vector then
-        -- NODE target (unchanged)
+        -- === NODE TARGET ===
         local from_path, to_path
 
         if map_route_list[near_result.route_to_id] and map_route_list[near_result.route_to_id][near_result.route_from_id] then
@@ -140,7 +137,7 @@ local function move_internal_initialize(self, source_position, move_data)
 
     else
         ------------------------------------------------------------------
-        -- VECTOR3 target - 4-way full path cost comparison
+        -- VECTOR3 target - Optimized 4-way comparison
         ------------------------------------------------------------------
         local target_vec = current_target
         local exit_near = self:calculate_to_nearest_route(target_vec)
@@ -149,75 +146,37 @@ local function move_internal_initialize(self, source_position, move_data)
             local exit_a = exit_near.route_from_id
             local exit_b = exit_near.route_to_id
 
-            print("DEBUG: VECTOR3 - exit route", exit_a, "↔", exit_b)
+            local current_a = near_result.route_from_id
+            local current_b = near_result.route_to_id
 
-            local on_same_route = (near_result.route_from_id == exit_a or near_result.route_from_id == exit_b) and
-                                  (near_result.route_to_id   == exit_a or near_result.route_to_id   == exit_b)
+            -- Case 1: Already on the exit route → direct to projection
+            local on_same_route = (current_a == exit_a or current_a == exit_b) and (current_b == exit_a or current_b == exit_b)
 
             if on_same_route then
-                print("DEBUG:   Already on exit route → direct to projection")
                 if move_data.config.allow_exit_on_route and exit_near.distance > move_data.config.gameobject_threshold + 1 then
                     pos_count = pos_count + 1
                     position_list[pos_count] = exit_near.position_on_route
-                    print("DEBUG:   Added exit projection (same route)")
                 end
             else
-                local current_a = near_result.route_from_id
-                local current_b = near_result.route_to_id
+                -- 4-way full path cost comparison
+                local path_aa = map_route_list[current_a] and self:fetch_path(current_a, exit_a) or nil
+                local path_ab = map_route_list[current_a] and self:fetch_path(current_a, exit_b) or nil
+                local path_ba = map_route_list[current_b] and self:fetch_path(current_b, exit_a) or nil
+                local path_bb = map_route_list[current_b] and self:fetch_path(current_b, exit_b) or nil
 
-                -- 4 possible combinations
-                local cost_a_to_a = math.huge
-                local cost_a_to_b = math.huge
-                local cost_b_to_a = math.huge
-                local cost_b_to_b = math.huge
+                local cost_aa = path_aa and (path_aa.distance + constants.distance(map_node_list[exit_a].position, exit_near.position_on_route)) or math.huge
+                local cost_ab = path_ab and (path_ab.distance + constants.distance(map_node_list[exit_b].position, exit_near.position_on_route)) or math.huge
+                local cost_ba = path_ba and (path_ba.distance + constants.distance(map_node_list[exit_a].position, exit_near.position_on_route)) or math.huge
+                local cost_bb = path_bb and (path_bb.distance + constants.distance(map_node_list[exit_b].position, exit_near.position_on_route)) or math.huge
 
-                local path_a_a = map_route_list[current_a] and self:fetch_path(current_a, exit_a) or nil
-                local path_a_b = map_route_list[current_a] and self:fetch_path(current_a, exit_b) or nil
-                local path_b_a = map_route_list[current_b] and self:fetch_path(current_b, exit_a) or nil
-                local path_b_b = map_route_list[current_b] and self:fetch_path(current_b, exit_b) or nil
-
-                if path_a_a then cost_a_to_a = path_a_a.distance + constants.distance(map_node_list[exit_a].position, exit_near.position_on_route) end
-                if path_a_b then cost_a_to_b = path_a_b.distance + constants.distance(map_node_list[exit_b].position, exit_near.position_on_route) end
-                if path_b_a then cost_b_to_a = path_b_a.distance + constants.distance(map_node_list[exit_a].position, exit_near.position_on_route) end
-                if path_b_b then cost_b_to_b = path_b_b.distance + constants.distance(map_node_list[exit_b].position, exit_near.position_on_route) end
-
-                print("DEBUG:   Cost A→A =", cost_a_to_a)
-                print("DEBUG:   Cost A→B =", cost_a_to_b)
-                print("DEBUG:   Cost B→A =", cost_b_to_a)
-                print("DEBUG:   Cost B→B =", cost_b_to_b)
-
-                -- Find the best combination
+                -- Find the best (shortest) combination
                 local min_cost = math.huge
-                local best_start = nil
-                local best_exit = nil
                 local best_path = nil
 
-                if cost_a_to_a < min_cost then
-                    min_cost = cost_a_to_a
-                    best_start = current_a
-                    best_exit = exit_a
-                    best_path = path_a_a
-                end
-                if cost_a_to_b < min_cost then
-                    min_cost = cost_a_to_b
-                    best_start = current_a
-                    best_exit = exit_b
-                    best_path = path_a_b
-                end
-                if cost_b_to_a < min_cost then
-                    min_cost = cost_b_to_a
-                    best_start = current_b
-                    best_exit = exit_a
-                    best_path = path_b_a
-                end
-                if cost_b_to_b < min_cost then
-                    min_cost = cost_b_to_b
-                    best_start = current_b
-                    best_exit = exit_b
-                    best_path = path_b_b
-                end
-
-                print("DEBUG:   Best combination:", best_start, "→", best_exit, "cost =", min_cost)
+                if cost_aa < min_cost then min_cost = cost_aa; best_path = path_aa end
+                if cost_ab < min_cost then min_cost = cost_ab; best_path = path_ab end
+                if cost_ba < min_cost then min_cost = cost_ba; best_path = path_ba end
+                if cost_bb < min_cost then min_cost = cost_bb; best_path = path_bb end
 
                 if best_path then
                     local p = best_path.path
@@ -228,10 +187,10 @@ local function move_internal_initialize(self, source_position, move_data)
                     end
                 end
 
+                -- Add exit projection if enabled
                 if move_data.config.allow_exit_on_route and exit_near.distance > move_data.config.gameobject_threshold + 1 then
                     pos_count = pos_count + 1
                     position_list[pos_count] = exit_near.position_on_route
-                    print("DEBUG:   Added exit projection")
                 end
             end
         end
@@ -245,13 +204,14 @@ local function move_internal_initialize(self, source_position, move_data)
         position_list[pos_count] = map_node_list[graph_target].position
     end
 
-    -- Build final path
+    -- Build final path with optional curvature
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
     if move_data.config.path_curve_roundness ~= 0 and #position_list > 2 then
         path[1] = position_list[1]
         local path_count = 1
+
         for i = 2, #position_list - 1 do
             local curve_temp = move_data._curve_temp or {}
             move_data._curve_temp = curve_temp
