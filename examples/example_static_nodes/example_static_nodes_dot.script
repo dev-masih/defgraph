@@ -16,7 +16,21 @@ function init(self)
 		collision_enabled = true,
 		collision_radius = 15,
 		collision_groups = { "myGroup" },
-		collision_behavior = defgraph.CollisionBehavior.Reactive
+		collision_behavior = defgraph.CollisionBehavior.Reactive,
+
+		-- Simple single callback style
+		on_reached = function(player, data)
+			print("Reached destination!")
+			if data.reached_destination_id then
+				print("  Node ID:", data.reached_destination_id)
+			elseif data.reached_destination_vector then
+				print("  Vector3:", data.reached_destination_vector)
+			end
+		end,
+
+		on_finished = function(player, data)
+			print("Route finished completely!")
+		end
 	})
 
 	-- initializing defgraph player
@@ -24,7 +38,7 @@ function init(self)
 										{ "myGroup" },
 										go.get_position(),
 										{ 1, vmath.vector3(900, 500, 0),  vmath.vector3(500, 180, 0) },
-										defgraph.ROUTETYPE.CYCLE,
+										defgraph.ROUTETYPE.ONETIME,
 										nil,
 										config)
 end
@@ -37,23 +51,21 @@ function update(self, dt)
 	go.set_position(self.update_result.position)
 
 	-- you can check if go reached to the destination
-	--if self.update_result.reached then
-	--	if self.update_result.reached_destination_id then
-	--		print("I'm at destination id : " .. self.update_result.reached_destination_id)
-	--	elseif self.update_result.reached_destination_vector then
-	--		print("I'm at destination vector : " .. self.update_result.reached_destination_vector)
-	--	end
-	--end
---
-	--print("Heading to : " .. (self.update_result.to_destination_id or "nil") .. " : " .. (self.update_result.to_destination_vector or "nil"))
+	if self.update_result.reached then
+		if self.update_result.reached_destination_id then
+			print("I'm at destination id : " .. self.update_result.reached_destination_id)
+		elseif self.update_result.reached_destination_vector then
+			print("I'm at destination vector : " .. self.update_result.reached_destination_vector)
+		end
+	end
 
-	--if self.update_result.finished then
-	--	if self.update_result.reached_destination_id then
-	--		print("Finished destination id : " .. self.update_result.reached_destination_id)
-	--	elseif self.update_result.reached_destination_vector then
-	--		print("Finished destination vector : " .. self.update_result.reached_destination_vector)
-	--	end
-	--end
+	if self.update_result.finished then
+		if self.update_result.reached_destination_id then
+			print("Finished destination id : " .. self.update_result.reached_destination_id)
+		elseif self.update_result.reached_destination_vector then
+			print("Finished destination vector : " .. self.update_result.reached_destination_vector)
+		end
+	end
 
 	if self.update_result.collided and #self.update_result.collided ~= 0 then
 		print("Collided with", #self.update_result.collided, "players")

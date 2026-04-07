@@ -23,12 +23,7 @@ local function player_update(self_player, speed, compute_collision_list)
     local path       = self_player.path
     local path_index = self_player.path_index or 1
 
-    -- Helper to get next target
-    local function get_next_target()
-        return self_player.targets and self_player.targets[self_player.destination_index] or nil
-    end
-
-    -- Path invalidation
+    -- Path invalidation check
     if path_index > 1 then
         local ids = self_player.path_node_ids
         if ids and #ids > 0 then
@@ -40,27 +35,48 @@ local function player_update(self_player, speed, compute_collision_list)
         end
     end
 
-    if not path or #path == 0 then
+    -- If player has already finished (ONETIME route), stay in finished state
+    if self_player._finished then
         local rotation = nil
         if self_player.initial_angle then
             local cf = self_player.current_face_vector
             rotation = vmath.quat_rotation_z(math.atan2(cf.y, cf.x) - self_player.initial_angle)
         end
-        local next_target = get_next_target()
+
         return {
             position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
             rotation                   = rotation,
             reached_destination_id     = nil,
-            to_destination_id          = type(next_target) == "number" and next_target or nil,
+            to_destination_id          = nil,
             reached_destination_vector = nil,
-            to_destination_vector      = type(next_target) == "userdata" and next_target or nil,
+            to_destination_vector      = nil,
             reached                    = false,
             finished                   = true,
             collided                   = {},
         }
     end
 
-    -- Rotation smoothing
+    if not path or #path == 0 then
+        self_player._finished = true
+        local rotation = nil
+        if self_player.initial_angle then
+            local cf = self_player.current_face_vector
+            rotation = vmath.quat_rotation_z(math.atan2(cf.y, cf.x) - self_player.initial_angle)
+        end
+        return {
+            position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
+            rotation                   = rotation,
+            reached_destination_id     = nil,
+            to_destination_id          = nil,
+            reached_destination_vector = nil,
+            to_destination_vector      = nil,
+            reached                    = false,
+            finished                   = true,
+            collided                   = {},
+        }
+    end
+
+    -- Rotation smoothing helper
     local rotation = nil
     local function apply_rotation_smoothing(dir_x, dir_y)
         if not self_player.initial_angle then return nil end
@@ -79,13 +95,9 @@ local function player_update(self_player, speed, compute_collision_list)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
-    -- Collision avoidance & list
-    local function compute_collision_avoidance(dir_x, dir_y, speed)
-        return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
-    end
-
     local collided = {}
     if compute_collision_list and self_player.config.collision_enabled then
+        -- ... (collision list collection - unchanged)
         local cfg = self_player.config
         local radius_sq = cfg.collision_radius * cfg.collision_radius
         local px, py = self_player.current_position.x, self_player.current_position.y
@@ -149,7 +161,7 @@ local function player_update(self_player, speed, compute_collision_list)
             local dir_x = vx * inv_len
             local dir_y = vy * inv_len
 
-            dir_x, dir_y, speed = compute_collision_avoidance(dir_x, dir_y, speed)
+            dir_x, dir_y, speed = collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
 
             if self_player.initial_angle then
                 rotation = apply_rotation_smoothing(dir_x, dir_y)
@@ -158,7 +170,8 @@ local function player_update(self_player, speed, compute_collision_list)
             self_player.current_position.x = self_player.current_position.x + dir_x * speed
             self_player.current_position.y = self_player.current_position.y + dir_y * speed
 
-            local next_target = get_next_target()
+            local next_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
+
             return {
                 position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
                 rotation                   = rotation,
@@ -175,7 +188,9 @@ local function player_update(self_player, speed, compute_collision_list)
         i = i + 1
     end
 
-    -- All path points passed → check real destination
+    -- ============================================================
+    -- All path points passed → We reached the current destination
+    -- ============================================================
     self_player.path_index = last_index + 1
 
     local current_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
@@ -201,27 +216,44 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     if is_reached then
-        local count = #self_player.targets or 0
-        local old_index = self_player.destination_index or 1
+        local old_index = self_player.destination_index
+        local reached_target = self_player.targets and self_player.targets[old_index] or nil
 
-        local should_continue = true
+        -- Prepare event data
+        local event_data = {
+            player                     = self_player,
+            reached_destination_id     = type(reached_target) == "number" and reached_target or nil,
+            reached_destination_vector = type(reached_target) == "userdata" and reached_target or nil,
+            destination_index          = old_index,
+            total_destinations         = #self_player.targets or 0,
+            route_type                 = self_player.route_type,
+        }
+
+        -- Trigger on_reached
+        if self_player.config.on_reached then
+            self_player.config.on_reached(self_player, event_data)
+        end
+
+        -- Determine if this was the final destination
+        local count = #self_player.targets or 0
         local is_finished = false
+        local should_continue = true
 
         local rt = self_player.route_type
 
         if rt == constants.ROUTETYPE.ONETIME then
-            if self_player.destination_index >= count then
-                should_continue = false
+            if old_index >= count then
                 is_finished = true
+                should_continue = false
+                self_player._finished = true   -- <-- Important flag
             else
-                self_player.destination_index = self_player.destination_index + 1
+                self_player.destination_index = old_index + 1
             end
 
         elseif rt == constants.ROUTETYPE.CYCLE then
-            self_player.destination_index = (self_player.destination_index % count) + 1
+            self_player.destination_index = (old_index % count) + 1
 
         elseif rt == constants.ROUTETYPE.SHUFFLE then
-            -- Shuffle targets and restart from beginning
             local t = self_player.targets
             for i = #t, 2, -1 do
                 local j = math.random(i)
@@ -230,14 +262,14 @@ local function player_update(self_player, speed, compute_collision_list)
             self_player.destination_index = 1
 
         elseif rt == constants.ROUTETYPE.PATROL then
-            if self_player.destination_index >= count then
+            if old_index >= count then
                 self_player.patrol_direction = -1
                 self_player.destination_index = count - 1
-            elseif self_player.destination_index <= 1 then
+            elseif old_index <= 1 then
                 self_player.patrol_direction = 1
                 self_player.destination_index = 2
             else
-                self_player.destination_index = self_player.destination_index + self_player.patrol_direction
+                self_player.destination_index = old_index + self_player.patrol_direction
             end
         end
 
@@ -246,13 +278,14 @@ local function player_update(self_player, speed, compute_collision_list)
             for k, v in pairs(updated_data) do
                 self_player[k] = v
             end
-            if updated_data.destination_index then
-                self_player.destination_index = updated_data.destination_index
-            end
         end
 
-        local reached_target = self_player.targets and self_player.targets[old_index] or nil
-        local next_target    = get_next_target()
+        -- Trigger on_finished ONLY ONCE
+        if is_finished and self_player.config.on_finished then
+            self_player.config.on_finished(self_player, event_data)
+        end
+
+        local next_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
 
         return {
             position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
@@ -268,7 +301,7 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     -- Still moving toward current destination
-    local next_target = get_next_target()
+    local next_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
 
     return {
         position                   = vmath.vector3(self_player.current_position.x, self_player.current_position.y, 0),
@@ -406,6 +439,7 @@ function Player:destroy()
     self.patrol_direction = nil
     self.destination_list = nil
     self._scratch_candidates = nil
+    self._finished = nil
 end
 
 -- ==================== Debug Methods on Player ====================

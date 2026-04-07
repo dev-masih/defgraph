@@ -18,6 +18,10 @@ local PLAYER_DEFAULTS = {
     collision_radius  = 6,
     collision_groups  = nil,
     collision_behavior = constants.CollisionBehavior.Balanced,   -- can be preset hash OR custom table
+
+    -- Event callbacks
+    on_reached  = nil,      -- function(player, reached_data)
+    on_finished = nil,      -- function(player, reached_data)
 }
 
 function PlayerConfig.new(options)
@@ -36,7 +40,11 @@ function PlayerConfig.new(options)
         collision_radius  = constants.default(options.collision_radius, PLAYER_DEFAULTS.collision_radius),
         collision_groups  = constants.default(options.collision_groups, PLAYER_DEFAULTS.collision_groups),
         collision_behavior = constants.default(options.collision_behavior, PLAYER_DEFAULTS.collision_behavior),
+
+        on_reached   = constants.default(options.on_reached,  PLAYER_DEFAULTS.on_reached),
+        on_finished  = constants.default(options.on_finished, PLAYER_DEFAULTS.on_finished)
     }
+
 
     return setmetatable(self, PlayerConfig)
 end
@@ -111,6 +119,17 @@ function PlayerConfig:validate()
 
     assert(self.collision_radius >= 0,
         "PlayerConfig: collision_radius must be >= 0")
+
+    -- Callbacks
+    if self.on_reached ~= nil then
+        assert(type(self.on_reached) == "function",
+            "PlayerConfig: on_reached must be a function or nil")
+    end
+
+    if self.on_finished ~= nil then
+        assert(type(self.on_finished) == "function",
+            "PlayerConfig: on_finished must be a function or nil")
+    end
 
     return true
 end
