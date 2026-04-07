@@ -85,6 +85,9 @@ local function move_internal_initialize(self, source_position, move_data)
     position_list[1] = source_position
     local pos_count = 1
 
+    print("DEBUG: ENTER - dest_index=", dest_index, "is_vector=", is_vector)
+    print("DEBUG:   Current route:", near_result.route_from_id, "↔", near_result.route_to_id)
+
     -- Entry projection when starting off-route
     if (near_result.distance > move_data.config.gameobject_threshold + 1) and move_data.config.allow_enter_on_route then
         pos_count = pos_count + 1
@@ -137,7 +140,7 @@ local function move_internal_initialize(self, source_position, move_data)
 
     else
         ------------------------------------------------------------------
-        -- VECTOR3 target - Always do graph pathfinding
+        -- VECTOR3 target - Strong shared node priority for exiting node
         ------------------------------------------------------------------
         local target_vec = current_target
         local exit_near = self:calculate_to_nearest_route(target_vec)
@@ -148,7 +151,6 @@ local function move_internal_initialize(self, source_position, move_data)
 
             print("DEBUG: VECTOR3 - exit route", exit_from_id, "↔", exit_to_id)
 
-            -- Check if already on the exit route
             local on_same_route = (near_result.route_from_id == exit_from_id or near_result.route_from_id == exit_to_id) and
                                   (near_result.route_to_id   == exit_from_id or near_result.route_to_id   == exit_to_id)
 
@@ -160,49 +162,51 @@ local function move_internal_initialize(self, source_position, move_data)
                     print("DEBUG:   Added exit projection (same route)")
                 end
             else
-                -- Find last graph node (or use current nearest node if no previous path)
-                local last_node = nil
-                if move_data.path_node_ids and #move_data.path_node_ids > 0 then
-                    last_node = move_data.path_node_ids[#move_data.path_node_ids]
+                -- Check if current route shares a node with exit route
+                local shares_node = (near_result.route_from_id == exit_from_id or near_result.route_from_id == exit_to_id or
+                                     near_result.route_to_id   == exit_from_id or near_result.route_to_id   == exit_to_id)
+
+                local chosen_gateway = nil
+
+                if shares_node then
+                    -- VERY STRONG priority for the shared node (this is the fix)
+                    if near_result.route_from_id == exit_from_id or near_result.route_from_id == exit_to_id then
+                        chosen_gateway = near_result.route_from_id
+                    else
+                        chosen_gateway = near_result.route_to_id
+                    end
+                    print("DEBUG:   Shared node detected → chose gateway", chosen_gateway, "(shared node priority)")
                 else
-                    -- First destination is a vector3 → use nearest node as starting point
-                    last_node = near_result.route_from_id   -- or near_result.route_to_id, doesn't matter
-                end
-
-                local path_to_from = nil
-                local path_to_to   = nil
-
-                if last_node then
-                    path_to_from = map_route_list[last_node] and self:fetch_path(last_node, exit_from_id) or nil
-                    path_to_to   = map_route_list[last_node] and self:fetch_path(last_node, exit_to_id)   or nil
-                end
-
-                if path_to_from or path_to_to then
+                    -- Normal case: choose closer to projection
                     local from_node_pos = map_node_list[exit_from_id].position
                     local to_node_pos   = map_node_list[exit_to_id].position
 
-                    local from_total = path_to_from and (path_to_from.distance + constants.distance(from_node_pos, exit_near.position_on_route)) or math.huge
-                    local to_total   = path_to_to   and (path_to_to.distance   + constants.distance(to_node_pos,   exit_near.position_on_route)) or math.huge
+                    local dist_from = constants.distance(from_node_pos, exit_near.position_on_route)
+                    local dist_to   = constants.distance(to_node_pos,   exit_near.position_on_route)
 
-                    print("DEBUG:   Gateway", exit_from_id, "full cost =", from_total)
-                    print("DEBUG:   Gateway", exit_to_id,   "full cost =", to_total)
+                    chosen_gateway = (dist_from <= dist_to) and exit_from_id or exit_to_id
+                    print("DEBUG:   → Chose gateway", chosen_gateway, "(closer to projection)")
+                end
 
-                    if from_total <= to_total then
-                        print("DEBUG:   → Chose gateway", exit_from_id)
-                        local fp = path_to_from.path
-                        for j = 1, #fp do
-                            pos_count = pos_count + 1
-                            position_list[pos_count] = map_node_list[fp[j]].position
-                            node_ids_list[#node_ids_list + 1] = fp[j]
-                        end
-                    else
-                        print("DEBUG:   → Chose gateway", exit_to_id)
-                        local tp = path_to_to.path
-                        for j = 1, #tp do
-                            pos_count = pos_count + 1
-                            position_list[pos_count] = map_node_list[tp[j]].position
-                            node_ids_list[#node_ids_list + 1] = tp[j]
-                        end
+                -- Start from the node on current route closer to the chosen gateway
+                local node_a = near_result.route_from_id
+                local node_b = near_result.route_to_id
+
+                local dist_a = constants.distance(map_node_list[node_a].position, map_node_list[chosen_gateway].position)
+                local dist_b = constants.distance(map_node_list[node_b].position, map_node_list[chosen_gateway].position)
+
+                local start_node = (dist_a <= dist_b) and node_a or node_b
+                print("DEBUG:   Starting path from node", start_node, "to gateway", chosen_gateway)
+
+                local path_to_chosen = self:fetch_path(start_node, chosen_gateway)
+
+                if path_to_chosen then
+                    print("DEBUG:   Path found, length =", path_to_chosen.distance)
+                    local p = path_to_chosen.path
+                    for j = 1, #p do
+                        pos_count = pos_count + 1
+                        position_list[pos_count] = map_node_list[p[j]].position
+                        node_ids_list[#node_ids_list + 1] = p[j]
                     end
                 end
 
