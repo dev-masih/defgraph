@@ -1,4 +1,5 @@
 -- defgraph/constants.lua
+-- Shared constants and helpers for the DefGraph module
 
 local constants = {}
 
@@ -88,5 +89,47 @@ constants.COLLISION_BEHAVIOR_PRESETS = {
         density_slow_factor     = 0.18,
     },
 }
+
+-- Default values taken from Balanced preset (used for CustomBehavior fallback)
+local BALANCED_DEFAULTS = constants.COLLISION_BEHAVIOR_PRESETS[constants.CollisionBehavior.Balanced]
+
+-- Enhanced helper: supports presets (hashes) OR custom tables with validation + defaults
+function constants.get_collision_preset(behavior)
+    if type(behavior) == "table" then
+        -- Custom behavior table → apply validation + fill missing values with Balanced defaults
+        local preset = {}
+
+        preset.lookahead_min                    = behavior.lookahead_min or BALANCED_DEFAULTS.lookahead_min
+        preset.lookahead_max                    = behavior.lookahead_max or BALANCED_DEFAULTS.lookahead_max
+        preset.lookahead_speed_factor           = behavior.lookahead_speed_factor or BALANCED_DEFAULTS.lookahead_speed_factor
+        preset.predictive_scale                 = behavior.predictive_scale or BALANCED_DEFAULTS.predictive_scale
+        preset.reactive_scale                   = behavior.reactive_scale or BALANCED_DEFAULTS.reactive_scale
+        preset.predictive_slow                  = behavior.predictive_slow or BALANCED_DEFAULTS.predictive_slow
+        preset.reactive_slow                    = behavior.reactive_slow or BALANCED_DEFAULTS.reactive_slow
+        preset.queue_spacing_factor             = behavior.queue_spacing_factor or BALANCED_DEFAULTS.queue_spacing_factor
+        preset.queue_slow                       = behavior.queue_slow or BALANCED_DEFAULTS.queue_slow
+        preset.path_recentering                 = behavior.path_recentering or BALANCED_DEFAULTS.path_recentering
+        preset.path_recentering_collision_scale = behavior.path_recentering_collision_scale or BALANCED_DEFAULTS.path_recentering_collision_scale
+        preset.dir_smoothing                    = behavior.dir_smoothing or BALANCED_DEFAULTS.dir_smoothing
+        preset.speed_smoothing                  = behavior.speed_smoothing or BALANCED_DEFAULTS.speed_smoothing
+        preset.density_radius_factor            = behavior.density_radius_factor or BALANCED_DEFAULTS.density_radius_factor
+        preset.density_slow_factor              = behavior.density_slow_factor or BALANCED_DEFAULTS.density_slow_factor
+
+        -- Basic validation for custom table
+        assert(type(preset.lookahead_min) == "number" and preset.lookahead_min > 0,
+            "Custom collision_behavior: lookahead_min must be a positive number")
+        assert(type(preset.lookahead_max) == "number" and preset.lookahead_max >= preset.lookahead_min,
+            "Custom collision_behavior: lookahead_max must be >= lookahead_min")
+        assert(type(preset.lookahead_speed_factor) == "number",
+            "Custom collision_behavior: lookahead_speed_factor must be a number")
+
+        return preset
+    end
+
+    -- Built-in preset
+    local preset = constants.COLLISION_BEHAVIOR_PRESETS[behavior]
+    assert(preset ~= nil, "Invalid collision_behavior: unknown preset (must be one of constants.CollisionBehavior.* or a custom table)")
+    return preset
+end
 
 return constants

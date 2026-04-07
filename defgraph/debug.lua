@@ -299,8 +299,9 @@ local function debug_draw_player(map, self_player, color, is_show_projection, is
 
         -- Density radius
         do
-            local preset = constants.COLLISION_BEHAVIOR_PRESETS[self_player.config.collision_behavior]
-            if preset and self_player._debug_density and self_player._debug_density > 0 then
+            -- supports custom collision_behavior table via helper
+            local preset = constants.get_collision_preset(self_player.config.collision_behavior)
+            if self_player._debug_density and self_player._debug_density > 0 then
                 local density = self_player._debug_density
                 local density_radius = radius * preset.density_radius_factor
                 local steps_d = 24

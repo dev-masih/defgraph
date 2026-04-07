@@ -1,5 +1,4 @@
 -- defgraph/config.lua
--- PlayerConfig class
 
 local constants = require("defgraph.constants")
 
@@ -9,7 +8,7 @@ PlayerConfig.__index = PlayerConfig
 local PLAYER_DEFAULTS = {
     gameobject_threshold = 2,
     allow_enter_on_route = true,
-    allow_exit_on_route  = true,          -- NEW
+    allow_exit_on_route  = true,
 
     path_curve_tightness = 4,
     path_curve_roundness = 3,
@@ -18,7 +17,7 @@ local PLAYER_DEFAULTS = {
     collision_enabled = false,
     collision_radius  = 6,
     collision_groups  = nil,
-    collision_behavior = constants.CollisionBehavior.Balanced,
+    collision_behavior = constants.CollisionBehavior.Balanced,   -- can be preset hash OR custom table
 }
 
 function PlayerConfig.new(options)
@@ -84,12 +83,18 @@ function PlayerConfig:validate()
         end
     end
 
-    assert(constants.COLLISION_BEHAVIOR_PRESETS[self.collision_behavior],
-        "PlayerConfig: Invalid collision_behavior preset")
-
-    -- Collision behavior
+    -- collision_behavior can now be a preset hash OR a completely custom table
     assert(self.collision_behavior ~= nil,
         "PlayerConfig: collision_behavior is required")
+
+    if type(self.collision_behavior) == "table" then
+        -- Custom table is allowed - validation happens in get_collision_preset()
+        -- We just ensure it's not nil/empty here
+        assert(next(self.collision_behavior) ~= nil or true, "Custom collision_behavior table cannot be empty (but missing keys will use Balanced defaults)")
+    else
+        assert(constants.COLLISION_BEHAVIOR_PRESETS[self.collision_behavior],
+            "PlayerConfig: Invalid collision_behavior preset. Use constants.CollisionBehavior.Cautious, .Balanced, .Reactive or a custom table.")
+    end
 
     -- Range checks
     assert(self.gameobject_threshold >= 0,

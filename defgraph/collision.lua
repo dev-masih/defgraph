@@ -22,7 +22,8 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
         return dir_x, dir_y, speed
     end
 
-    local preset = constants.COLLISION_BEHAVIOR_PRESETS[cfg.collision_behavior]
+    -- supports custom table OR preset hash via the helper
+    local preset = constants.get_collision_preset(cfg.collision_behavior)
 
     local px = self_player.current_position.x
     local py = self_player.current_position.y
@@ -292,7 +293,7 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
     if alignment < 0.6 then
         local recenter_strength = preset.path_recentering
 
-            -- dynamically reduce recentering when we are actively avoiding
+        -- dynamically reduce recentering when we are actively avoiding
         if strongest_reactive > 0 or strongest_predictive > 0 or strongest_queueing > 0 then
             recenter_strength = recenter_strength * (preset.path_recentering_collision_scale or 0.4)
         end
