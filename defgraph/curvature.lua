@@ -91,6 +91,8 @@ local function move_internal_initialize(self, source_position, move_data)
         position_list[pos_count] = near_result.position_on_route
     end
 
+    local reachable = true
+
     if not is_vector then
         -- === NODE TARGET ===
         local from_path, to_path
@@ -133,11 +135,19 @@ local function move_internal_initialize(self, source_position, move_data)
                     node_ids_list[#node_ids_list + 1] = tp[j]
                 end
             end
+        else
+            -- Node unreachable → go to nearest projection on current route and stop
+            reachable = false
+            print("DEBUG: Node unreachable → going to nearest projection on current route")
+            if move_data.config.allow_enter_on_route and near_result.distance > move_data.config.gameobject_threshold + 1 then
+                pos_count = pos_count + 1
+                position_list[pos_count] = near_result.position_on_route
+            end
         end
 
     else
         ------------------------------------------------------------------
-        -- VECTOR3 target - Optimized 4-way comparison
+        -- VECTOR3 target
         ------------------------------------------------------------------
         local target_vec = current_target
         local exit_near = self:calculate_to_nearest_route(target_vec)
@@ -149,7 +159,6 @@ local function move_internal_initialize(self, source_position, move_data)
             local current_a = near_result.route_from_id
             local current_b = near_result.route_to_id
 
-            -- Case 1: Already on the exit route → direct to projection
             local on_same_route = (current_a == exit_a or current_a == exit_b) and (current_b == exit_a or current_b == exit_b)
 
             if on_same_route then
@@ -158,7 +167,6 @@ local function move_internal_initialize(self, source_position, move_data)
                     position_list[pos_count] = exit_near.position_on_route
                 end
             else
-                -- 4-way full path cost comparison
                 local path_aa = map_route_list[current_a] and self:fetch_path(current_a, exit_a) or nil
                 local path_ab = map_route_list[current_a] and self:fetch_path(current_a, exit_b) or nil
                 local path_ba = map_route_list[current_b] and self:fetch_path(current_b, exit_a) or nil
@@ -169,7 +177,6 @@ local function move_internal_initialize(self, source_position, move_data)
                 local cost_ba = path_ba and (path_ba.distance + constants.distance(map_node_list[exit_a].position, exit_near.position_on_route)) or math.huge
                 local cost_bb = path_bb and (path_bb.distance + constants.distance(map_node_list[exit_b].position, exit_near.position_on_route)) or math.huge
 
-                -- Find the best (shortest) combination
                 local min_cost = math.huge
                 local best_path = nil
 
@@ -178,40 +185,48 @@ local function move_internal_initialize(self, source_position, move_data)
                 if cost_ba < min_cost then min_cost = cost_ba; best_path = path_ba end
                 if cost_bb < min_cost then min_cost = cost_bb; best_path = path_bb end
 
-                if best_path then
+                if best_path and min_cost < math.huge then
                     local p = best_path.path
                     for j = 1, #p do
                         pos_count = pos_count + 1
                         position_list[pos_count] = map_node_list[p[j]].position
                         node_ids_list[#node_ids_list + 1] = p[j]
                     end
-                end
 
-                -- Add exit projection if enabled
-                if move_data.config.allow_exit_on_route and exit_near.distance > move_data.config.gameobject_threshold + 1 then
-                    pos_count = pos_count + 1
-                    position_list[pos_count] = exit_near.position_on_route
+                    if move_data.config.allow_exit_on_route and exit_near.distance > move_data.config.gameobject_threshold + 1 then
+                        pos_count = pos_count + 1
+                        position_list[pos_count] = exit_near.position_on_route
+                    end
+                else
+                    -- Vector3 unreachable → go to nearest projection on CURRENT route and stop
+                    reachable = false
+                    print("DEBUG: Vector3 unreachable → going to nearest projection on current route")
+                    if move_data.config.allow_exit_on_route and near_result.distance > move_data.config.gameobject_threshold + 1 then
+                        pos_count = pos_count + 1
+                        position_list[pos_count] = near_result.position_on_route
+                    end
                 end
             end
         end
     end
 
-    -- Final target
-    pos_count = pos_count + 1
-    if is_vector then
-        position_list[pos_count] = current_target
-    else
-        position_list[pos_count] = map_node_list[graph_target].position
+    -- Final target ONLY if reachable
+    if reachable then
+        pos_count = pos_count + 1
+        if is_vector then
+            position_list[pos_count] = current_target
+        else
+            position_list[pos_count] = map_node_list[graph_target].position
+        end
     end
 
-    -- Build final path with optional curvature
+    -- Build final path
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
     if move_data.config.path_curve_roundness ~= 0 and #position_list > 2 then
         path[1] = position_list[1]
         local path_count = 1
-
         for i = 2, #position_list - 1 do
             local curve_temp = move_data._curve_temp or {}
             move_data._curve_temp = curve_temp

@@ -23,7 +23,7 @@ function init(self)
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
 										{ "myGroup" },
 										go.get_position(),
-										{ 1, vmath.vector3(900, 500, 0),  vmath.vector3(500, 180, 0), 14 },
+										{ 1, vmath.vector3(900, 500, 0),  vmath.vector3(500, 180, 0) },
 										defgraph.ROUTETYPE.CYCLE,
 										nil,
 										config)
