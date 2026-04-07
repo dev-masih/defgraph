@@ -406,9 +406,6 @@ function Player:destroy()
     self.patrol_direction = nil
     self.destination_list = nil
     self._scratch_candidates = nil
-    self._scratch_ids        = nil
-    self._scratch_nv         = nil
-    self._scratch_rv         = nil
 end
 
 -- ==================== Debug Methods on Player ====================
