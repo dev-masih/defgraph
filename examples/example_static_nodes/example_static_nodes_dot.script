@@ -23,8 +23,8 @@ function init(self)
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
 										{ "myGroup" },
 										go.get_position(),
-										{ 6, vmath.vector3(500, 180, 0), 1, vmath.vector3(500, 180, 0) },
-										defgraph.ROUTETYPE.SHUFFLE,
+										{ 6, vmath.vector3(900, 500, 0), 20, vmath.vector3(500, 180, 0) },
+										defgraph.ROUTETYPE.PATROL,
 										nil,
 										config)
 end
@@ -37,23 +37,23 @@ function update(self, dt)
 	go.set_position(self.update_result.position)
 
 	-- you can check if go reached to the destination
-	if self.update_result.reached then
-		if self.update_result.reached_destination_id then
-			print("I'm at destination id : " .. self.update_result.reached_destination_id)
-		elseif self.update_result.reached_destination_vector then
-			print("I'm at destination vector : " .. self.update_result.reached_destination_vector)
-		end
-	end
+	--if self.update_result.reached then
+	--	if self.update_result.reached_destination_id then
+	--		print("I'm at destination id : " .. self.update_result.reached_destination_id)
+	--	elseif self.update_result.reached_destination_vector then
+	--		print("I'm at destination vector : " .. self.update_result.reached_destination_vector)
+	--	end
+	--end
+--
+	--print("Heading to : " .. (self.update_result.to_destination_id or "nil") .. " : " .. (self.update_result.to_destination_vector or "nil"))
 
-	print("Heading to : " .. (self.update_result.to_destination_id or "nil") .. " : " .. (self.update_result.to_destination_vector or "nil"))
-
-	if self.update_result.finished then
-		if self.update_result.reached_destination_id then
-			print("Finished destination id : " .. self.update_result.reached_destination_id)
-		elseif self.update_result.reached_destination_vector then
-			print("Finished destination vector : " .. self.update_result.reached_destination_vector)
-		end
-	end
+	--if self.update_result.finished then
+	--	if self.update_result.reached_destination_id then
+	--		print("Finished destination id : " .. self.update_result.reached_destination_id)
+	--	elseif self.update_result.reached_destination_vector then
+	--		print("Finished destination vector : " .. self.update_result.reached_destination_vector)
+	--	end
+	--end
 
 	if self.update_result.collided and #self.update_result.collided ~= 0 then
 		print("Collided with", #self.update_result.collided, "players")
