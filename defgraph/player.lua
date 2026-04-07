@@ -22,14 +22,13 @@ local function player_update(self_player, speed, compute_collision_list)
 
     local path       = self_player.path
     local path_index = self_player.path_index or 1
-    local dest_index = self_player.destination_index
 
-    -- Helper to get next target (used by all return paths)
+    -- Helper to get next target
     local function get_next_target()
         return self_player.targets and self_player.targets[self_player.destination_index] or nil
     end
 
-    -- Path invalidation check
+    -- Path invalidation
     if path_index > 1 then
         local ids = self_player.path_node_ids
         if ids and #ids > 0 then
@@ -80,7 +79,7 @@ local function player_update(self_player, speed, compute_collision_list)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
-    -- Collision avoidance & collision list
+    -- Collision avoidance & list
     local function compute_collision_avoidance(dir_x, dir_y, speed)
         return collision.compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     end
@@ -131,7 +130,7 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     ----------------------------------------------------------------------
-    -- Main movement loop
+    -- Movement loop
     ----------------------------------------------------------------------
     local threshold_sq = (self_player.config.gameobject_threshold + 1) ^ 2
     local last_index = #path
@@ -176,10 +175,10 @@ local function player_update(self_player, speed, compute_collision_list)
         i = i + 1
     end
 
-    -- All path points passed → check if real destination reached
+    -- All path points passed → check real destination
     self_player.path_index = last_index + 1
 
-    local current_target = self_player.targets and self_player.targets[dest_index] or nil
+    local current_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
     local is_reached = false
 
     if current_target then
@@ -208,17 +207,42 @@ local function player_update(self_player, speed, compute_collision_list)
         local should_continue = true
         local is_finished = false
 
-        if self_player.destination_index and self_player.destination_index < count then
-            self_player.destination_index = self_player.destination_index + 1
-        else
-            should_continue = false
-            is_finished = true
+        local rt = self_player.route_type
+
+        if rt == constants.ROUTETYPE.ONETIME then
+            if self_player.destination_index >= count then
+                should_continue = false
+                is_finished = true
+            else
+                self_player.destination_index = self_player.destination_index + 1
+            end
+
+        elseif rt == constants.ROUTETYPE.CYCLE then
+            self_player.destination_index = (self_player.destination_index % count) + 1
+
+        elseif rt == constants.ROUTETYPE.SHUFFLE then
+            -- Shuffle targets and restart from beginning
+            local t = self_player.targets
+            for i = #t, 2, -1 do
+                local j = math.random(i)
+                t[i], t[j] = t[j], t[i]
+            end
+            self_player.destination_index = 1
+
+        elseif rt == constants.ROUTETYPE.PATROL then
+            if self_player.destination_index >= count then
+                self_player.patrol_direction = -1
+                self_player.destination_index = count - 1
+            elseif self_player.destination_index <= 1 then
+                self_player.patrol_direction = 1
+                self_player.destination_index = 2
+            else
+                self_player.destination_index = self_player.destination_index + self_player.patrol_direction
+            end
         end
 
         if should_continue then
             local updated_data = map:move_internal_initialize(self_player.current_position, self_player)
-            
-            -- Persist updated state (necessary for destination_index and path to survive to next frame)
             for k, v in pairs(updated_data) do
                 self_player[k] = v
             end

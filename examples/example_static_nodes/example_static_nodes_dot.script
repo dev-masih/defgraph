@@ -23,15 +23,15 @@ function init(self)
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
 										{ "myGroup" },
 										go.get_position(),
-										{ 6, vmath.vector3(900, 500, 0), 20, vmath.vector3(500, 180, 0) },
-										defgraph.ROUTETYPE.PATROL,
+										{  vmath.vector3(900, 500, 0), vmath.vector3(500, 180, 0) },
+										defgraph.ROUTETYPE.CYCLE,
 										nil,
 										config)
 end
 
 function update(self, dt)
 	-- defgraph player calculation loop
-	self.update_result = self.player:update(100 * dt, true)
+	self.update_result = self.player:update(150 * dt, true)
 
 	-- update go postion based of returned result
 	go.set_position(self.update_result.position)
