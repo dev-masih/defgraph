@@ -1,5 +1,5 @@
 -- defgraph/player.lua
--- Final fixed version - vector3 after node
+-- Final version with clean multiple event listeners
 
 local constants = require("defgraph.constants")
 local collision = require("defgraph.collision")
@@ -8,6 +8,69 @@ local debug     = require("defgraph.debug")
 
 local Player = {}
 Player.__index = Player
+
+-- ==================== Event Listener System ====================
+
+function Player:add_listener(event_name, callback)
+    assert(event_name == "reached" or event_name == "finished",
+           "add_listener: event_name must be 'reached' or 'finished'")
+    assert(type(callback) == "function", "add_listener: callback must be a function")
+
+    self._listeners = self._listeners or {}
+    self._listeners[event_name] = self._listeners[event_name] or {}
+
+    -- Prevent duplicate listeners
+    for _, cb in ipairs(self._listeners[event_name]) do
+        if cb == callback then
+            return false
+        end
+    end
+
+    table.insert(self._listeners[event_name], callback)
+    return true
+end
+
+function Player:remove_listener(event_name, callback)
+    if not self._listeners or not self._listeners[event_name] then 
+        return false 
+    end
+
+    local list = self._listeners[event_name]
+    for i = #list, 1, -1 do
+        if list[i] == callback then
+            table.remove(list, i)
+            return true
+        end
+    end
+    return false
+end
+
+function Player:clear_listeners(event_name)
+    if self._listeners then
+        if event_name then
+            self._listeners[event_name] = nil
+        else
+            self._listeners = nil
+        end
+    end
+end
+
+-- Internal safe trigger
+local function trigger_listeners(self_player, event_name, event_data)
+    if not self_player._listeners or not self_player._listeners[event_name] then
+        return
+    end
+
+    local listeners = self_player._listeners[event_name]
+    for i = 1, #listeners do
+        local success, err = pcall(listeners[i], self_player, event_data)
+        if not success then
+            print("Warning: Error in '" .. event_name .. "' listener: " .. tostring(err))
+        end
+    end
+end
+
+-- ==================== Core Update Function ====================
 
 local function player_update(self_player, speed, compute_collision_list)
     compute_collision_list = compute_collision_list or false
@@ -23,19 +86,7 @@ local function player_update(self_player, speed, compute_collision_list)
     local path       = self_player.path
     local path_index = self_player.path_index or 1
 
-    -- Path invalidation check
-    if path_index > 1 then
-        local ids = self_player.path_node_ids
-        if ids and #ids > 0 then
-            if map:compute_path_version(ids) ~= self_player.path_version then
-                self_player = map:move_internal_initialize(self_player.current_position, self_player)
-                path = self_player.path
-                path_index = self_player.path_index or 1
-            end
-        end
-    end
-
-    -- If player has already finished (ONETIME route), stay in finished state
+    -- If player has already finished, stay in finished state
     if self_player._finished then
         local rotation = nil
         if self_player.initial_angle then
@@ -54,6 +105,18 @@ local function player_update(self_player, speed, compute_collision_list)
             finished                   = true,
             collided                   = {},
         }
+    end
+
+    -- Path invalidation
+    if path_index > 1 then
+        local ids = self_player.path_node_ids
+        if ids and #ids > 0 then
+            if map:compute_path_version(ids) ~= self_player.path_version then
+                self_player = map:move_internal_initialize(self_player.current_position, self_player)
+                path = self_player.path
+                path_index = self_player.path_index or 1
+            end
+        end
     end
 
     if not path or #path == 0 then
@@ -95,9 +158,9 @@ local function player_update(self_player, speed, compute_collision_list)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
+    -- Collision list collection
     local collided = {}
     if compute_collision_list and self_player.config.collision_enabled then
-        -- ... (collision list collection - unchanged)
         local cfg = self_player.config
         local radius_sq = cfg.collision_radius * cfg.collision_radius
         local px, py = self_player.current_position.x, self_player.current_position.y
@@ -189,7 +252,7 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     -- ============================================================
-    -- All path points passed → We reached the current destination
+    -- Reached current destination
     -- ============================================================
     self_player.path_index = last_index + 1
 
@@ -229,12 +292,10 @@ local function player_update(self_player, speed, compute_collision_list)
             route_type                 = self_player.route_type,
         }
 
-        -- Trigger on_reached
-        if self_player.config.on_reached then
-            self_player.config.on_reached(self_player, event_data)
-        end
+        -- Trigger reached event
+        trigger_listeners(self_player, "reached", event_data)
 
-        -- Determine if this was the final destination
+        -- Route progression logic
         local count = #self_player.targets or 0
         local is_finished = false
         local should_continue = true
@@ -245,7 +306,7 @@ local function player_update(self_player, speed, compute_collision_list)
             if old_index >= count then
                 is_finished = true
                 should_continue = false
-                self_player._finished = true   -- <-- Important flag
+                self_player._finished = true
             else
                 self_player.destination_index = old_index + 1
             end
@@ -278,11 +339,14 @@ local function player_update(self_player, speed, compute_collision_list)
             for k, v in pairs(updated_data) do
                 self_player[k] = v
             end
+            if updated_data.destination_index then
+                self_player.destination_index = updated_data.destination_index
+            end
         end
 
-        -- Trigger on_finished ONLY ONCE
-        if is_finished and self_player.config.on_finished then
-            self_player.config.on_finished(self_player, event_data)
+        -- Trigger finished event only once
+        if is_finished then
+            trigger_listeners(self_player, "finished", event_data)
         end
 
         local next_target = self_player.targets and self_player.targets[self_player.destination_index] or nil
@@ -320,17 +384,18 @@ function Player:update(speed, compute_collision_list)
     return player_update(self, speed, compute_collision_list)
 end
 
+-- ==================== Other Player Methods ====================
+
 function Player:update_destinations(destination_list, route_type)
     assert(destination_list, "Player:update_destinations: destination_list is required")
     assert(type(destination_list) == "table", "destination_list must be a table")
 
     route_type = constants.default(route_type, self.route_type or constants.ROUTETYPE.ONETIME)
 
-    -- IMPORTANT: get BOTH tables from normalize
     local normalized, targets = self.map:normalize_destination_list(destination_list)
 
-    self.destination_list = normalized      -- nodes only
-    self.targets          = targets         -- mixed nodes + vector3 (CRITICAL)
+    self.destination_list = normalized
+    self.targets          = targets
 
     local count = #normalized
     self.destination_index = 1
@@ -342,12 +407,9 @@ function Player:update_destinations(destination_list, route_type)
 
     self.route_type = route_type
 
-    print("DEBUG: update_destinations - #normalized =", #normalized, "| #targets =", #targets)
-
-    -- Rebuild path with the new destinations
+    -- Rebuild path
     self = self.map:move_internal_initialize(self.current_position, self)
 end
-
 
 function Player:update_config(new_config)
     assert(new_config, "Player:update_config: new_config is required")
@@ -439,10 +501,14 @@ function Player:destroy()
     self.patrol_direction = nil
     self.destination_list = nil
     self._scratch_candidates = nil
+    self._scratch_ids        = nil
+    self._scratch_nv         = nil
+    self._scratch_rv         = nil
     self._finished = nil
+    self:clear_listeners()        -- Clean up listeners
 end
 
--- ==================== Debug Methods on Player ====================
+-- ==================== Debug Methods ====================
 
 function Player:debug_draw_player(color, show_projection, show_directions, show_snap_radius, show_collision)
     if not self.map then return end
@@ -453,6 +519,7 @@ function Player:debug_draw_player(color, show_projection, show_directions, show_
                             show_collision or false)
 end
 
+-- Export
 return {
     Player = Player,
     player_update = player_update,

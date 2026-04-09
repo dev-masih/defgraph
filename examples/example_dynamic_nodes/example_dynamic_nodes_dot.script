@@ -40,13 +40,4 @@ function update(self, dt)
 	go.set_rotation(self.update_result.rotation)
 
 	self.player:debug_draw_player(vmath.vector4(1, 1, 0, 1), false, false, false, true)
-
-	-- you can check if go reached to the destination
-	if self.update_result.reached then
-		print("I'm at destination id: " .. self.update_result.reached_destination_id)
-	end
-
-	if self.update_result.finished then
-		print("Finished at destination id: " .. self.update_result.reached_destination_id)
-	end
 end

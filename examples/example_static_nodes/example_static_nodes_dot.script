@@ -17,20 +17,6 @@ function init(self)
 		collision_radius = 15,
 		collision_groups = { "myGroup" },
 		collision_behavior = defgraph.CollisionBehavior.Reactive,
-
-		-- Simple single callback style
-		on_reached = function(player, data)
-			print("Reached destination!")
-			if data.reached_destination_id then
-				print("  Node ID:", data.reached_destination_id)
-			elseif data.reached_destination_vector then
-				print("  Vector3:", data.reached_destination_vector)
-			end
-		end,
-
-		on_finished = function(player, data)
-			print("Route finished completely!")
-		end
 	})
 
 	-- initializing defgraph player
@@ -41,6 +27,18 @@ function init(self)
 										defgraph.ROUTETYPE.ONETIME,
 										nil,
 										config)
+
+	self.player:add_listener("reached", function(player, data)
+			if data.reached_destination_id then
+				print("Reached destination Node ID:", data.reached_destination_id)
+			elseif data.reached_destination_vector then
+				print("Reached destination Vector3:", data.reached_destination_vector)
+			end
+	end)
+
+	self.player:add_listener("finished", function(player, data)
+			print("Route finished completely!")
+	end)
 end
 
 function update(self, dt)
