@@ -15,9 +15,10 @@ function init(self)
 
 		collision_enabled = true,
 		collision_radius = 15,
-		collision_groups = { "myGroup" },
 		collision_behavior = defgraph.CollisionBehavior.Reactive,
 	})
+
+	self.map:add_collision_rule("myGroup", "myGroup")
 
 	-- initializing defgraph player
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),

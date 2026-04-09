@@ -16,8 +16,7 @@ local PLAYER_DEFAULTS = {
 
     collision_enabled = false,
     collision_radius  = 6,
-    collision_groups  = nil,
-    collision_behavior = constants.CollisionBehavior.Balanced,   -- can be preset hash OR custom table
+    collision_behavior = constants.CollisionBehavior.Balanced,
 }
 
 function PlayerConfig.new(options)
@@ -34,10 +33,8 @@ function PlayerConfig.new(options)
 
         collision_enabled = constants.default(options.collision_enabled, PLAYER_DEFAULTS.collision_enabled),
         collision_radius  = constants.default(options.collision_radius, PLAYER_DEFAULTS.collision_radius),
-        collision_groups  = constants.default(options.collision_groups, PLAYER_DEFAULTS.collision_groups),
         collision_behavior = constants.default(options.collision_behavior, PLAYER_DEFAULTS.collision_behavior),
     }
-
 
     return setmetatable(self, PlayerConfig)
 end
@@ -73,18 +70,7 @@ function PlayerConfig:validate()
     assert(type(self.collision_radius) == "number",
         "PlayerConfig: collision_radius must be a number")
 
-    -- Collision groups
-    assert(self.collision_groups == nil or type(self.collision_groups) == "table",
-        "PlayerConfig: collision_groups must be nil or a list of strings")
-
-    if self.collision_groups ~= nil then
-        for i, group in ipairs(self.collision_groups) do
-            assert(type(group) == "string",
-                "PlayerConfig: collision_groups must contain strings")
-        end
-    end
-
-    -- collision_behavior can now be a preset hash OR a completely custom table
+         -- collision_behavior can now be a preset hash OR a completely custom table
     assert(self.collision_behavior ~= nil,
         "PlayerConfig: collision_behavior is required")
 

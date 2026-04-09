@@ -1,5 +1,5 @@
 -- defgraph/player.lua
--- Final version with clean multiple event listeners
+-- Player logic with clean multiple event listeners and new collision matrix support
 
 local constants = require("defgraph.constants")
 local collision = require("defgraph.collision")
@@ -158,7 +158,7 @@ local function player_update(self_player, speed, compute_collision_list)
         return vmath.quat_rotation_z(angle - self_player.initial_angle)
     end
 
-    -- Collision list collection
+    -- Collision list collection (NEW: uses collision matrix)
     local collided = {}
     if compute_collision_list and self_player.config.collision_enabled then
         local cfg = self_player.config
@@ -171,35 +171,46 @@ local function player_update(self_player, speed, compute_collision_list)
         for i = 1, #candidates do candidates[i] = nil end
 
         local map_state = map:get_map_state()
-        if cfg.collision_groups then
-            for _, group in ipairs(cfg.collision_groups) do
-                local cached = map_state.collision_candidate_cache[group]
-                if cached then
-                    for j = 1, #cached do
-                        count = count + 1
-                        candidates[count] = cached[j]
+        local matrix = map_state.collision_matrix
+
+        -- Build candidates using collision matrix
+        for _, other in pairs(map_state.players) do
+            if other ~= self_player and other.config.collision_enabled then
+                local should_collide = false
+
+                -- Only players with groups can collide
+                if self_player.groups and other.groups and
+                   next(self_player.groups) ~= nil and next(other.groups) ~= nil then
+                    
+                    for g1 in pairs(self_player.groups) do
+                        for g2 in pairs(other.groups) do
+                            if matrix[g1] and matrix[g1][g2] then
+                                should_collide = true
+                                break
+                            end
+                        end
+                        if should_collide then break end
                     end
                 end
-            end
-        else
-            for _, p in pairs(map_state.players) do
-                count = count + 1
-                candidates[count] = p
+
+                if should_collide then
+                    count = count + 1
+                    candidates[count] = other
+                end
             end
         end
 
+        -- Check actual overlap for collided list
         for i = 1, count do
             local other = candidates[i]
-            if other ~= self_player then
-                local dx = px - other.current_position.x
-                local dy = py - other.current_position.y
-                if dx*dx + dy*dy <= radius_sq then
-                    table.insert(collided, {
-                        id = other.id,
-                        key = other.key,
-                        groups = other:get_groups() or {}
-                    })
-                end
+            local dx = px - other.current_position.x
+            local dy = py - other.current_position.y
+            if dx*dx + dy*dy <= radius_sq then
+                table.insert(collided, {
+                    id = other.id,
+                    key = other.key,
+                    groups = other:get_groups() or {}
+                })
             end
         end
     end
@@ -421,7 +432,7 @@ function Player:update_config(new_config)
     new_config:validate()
     self.config = new_config
 
-    -- Clear collision caches
+    -- Clear collision-related caches
     self._scratch_candidates = nil
     self._smooth_dir_x = nil
     self._smooth_dir_y = nil
@@ -431,13 +442,7 @@ function Player:update_config(new_config)
     self._last_speed = nil
 
     if self.map then
-        if self.config.collision_groups then
-            for _, group in ipairs(self.config.collision_groups) do
-                self.map:invalidate_collision_cache(group)
-            end
-        else
-            self.map:invalidate_collision_cache()
-        end
+        self.map:invalidate_collision_cache()
     end
 end
 

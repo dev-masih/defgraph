@@ -73,6 +73,7 @@ function Map.new()
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len } (route info)
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] } (cached path)
         collision_candidate_cache = {},   -- group -> list of players
+        collision_matrix = {},        -- groupA -> groupB -> boolean
 
         -- node registry / groups
         node_registry   = {},  -- key -> Node
@@ -115,13 +116,8 @@ Map.get_map_state              = get_map_state
 
 -- ==================== Internal Helpers ====================
 
-function Map:invalidate_collision_cache(group)
-    local state = get_map_state(self)
-    if group then
-        state.collision_candidate_cache[group] = nil
-    else
-        state.collision_candidate_cache = {}
-    end
+function Map:invalidate_collision_cache()
+    get_map_state(self).collision_candidate_cache = {}
 end
 
 local function map_update_node_type(map, node_id)
@@ -320,6 +316,77 @@ function Map:remove_nodes_in_group(group)
     state.nodes_by_group[group] = nil
 end
 
+-- ==================== Collision Matrix Management ====================
+
+function Map:add_collision_rule(group1, group2, bidirectional)
+    bidirectional = bidirectional ~= false   -- default true
+
+    local matrix = get_map_state(self).collision_matrix
+
+    matrix[group1] = matrix[group1] or {}
+    matrix[group2] = matrix[group2] or {}
+
+    matrix[group1][group2] = true
+    if bidirectional then
+        matrix[group2][group1] = true
+    end
+
+    self:invalidate_collision_cache()
+end
+
+function Map:remove_collision_rule(group1, group2, bidirectional)
+    bidirectional = bidirectional ~= false
+
+    local matrix = get_map_state(self).collision_matrix
+
+    if matrix[group1] then
+        matrix[group1][group2] = nil
+    end
+    if bidirectional and matrix[group2] then
+        matrix[group2][group1] = nil
+    end
+
+    self:invalidate_collision_cache()
+end
+
+function Map:clear_collision_rules()
+    get_map_state(self).collision_matrix = {}
+    self:invalidate_collision_cache()
+end
+
+function Map:debug_print_collision_matrix()
+    local matrix = get_map_state(self).collision_matrix
+    print("=== Collision Matrix ===")
+    for g1, row in pairs(matrix) do
+        local collides_with = {}
+        for g2, collides in pairs(row) do
+            if collides then
+                table.insert(collides_with, g2)
+            end
+        end
+        if #collides_with > 0 then
+            table.sort(collides_with)
+            print("  " .. g1 .. " collides with: " .. table.concat(collides_with, ", "))
+        else
+            print("  " .. g1 .. " collides with: (nothing)")
+        end
+    end
+    if next(matrix) == nil then
+        print("  (empty - all groups collide with nothing)")
+    end
+    print("========================")
+end
+
+function Map:get_collision_matrix()
+    return get_map_state(self).collision_matrix
+end
+
+-- Optional helper
+function Map:groups_collide(group1, group2)
+    local matrix = get_map_state(self).collision_matrix
+    return matrix[group1] and matrix[group1][group2] == true
+end
+
 -- ==================== Player Management ====================
 
 function Map:get_player(key)
@@ -382,7 +449,7 @@ function Map:add_player_to_group(key, group)
     state.players_by_group[group][key] = true
     player.groups[group] = true
 
-    self:invalidate_collision_cache(group)
+    self:invalidate_collision_cache()
     return true
 end
 
@@ -403,7 +470,7 @@ function Map:remove_player_from_group(key, group)
         end
     end
 
-    self:invalidate_collision_cache(group)
+    self:invalidate_collision_cache()
 end
 
 function Map:is_player_in_group(key, group)
@@ -888,7 +955,8 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
         current_face_vector = initial_face_vector or vmath.vector3(1, 0, 0),
         initial_angle       = initial_angle,
 
-        config = player_config
+        config = player_config,
+        groups = {}
     }
 
     local player = setmetatable(move_data, player.Player)
@@ -898,7 +966,6 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
     player.key = key
 
     state.players[key] = player
-    player.groups = {}
 
     if groups then
         for _, group in ipairs(groups) do
@@ -930,6 +997,7 @@ function Map:destroy()
     state.node_version = {}
     state.route_version = {}
     state.collision_candidate_cache = {}
+    state.collision_matrix = {}
 
     self._destroyed = true
     map_state[self] = nil

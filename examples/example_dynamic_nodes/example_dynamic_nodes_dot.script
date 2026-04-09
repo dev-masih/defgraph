@@ -15,9 +15,10 @@ function init(self)
 
 		collision_enabled = true,
 		collision_radius = 10,
-		collision_groups = { "myGroup" },
 		collision_behavior = defgraph.CollisionBehavior.Cautious
 	})
+
+	self.map:add_collision_rule("myGroup", "myGroup")
 
 	-- initializing defgraph player with face direction
 	self.player = self.map:create_player("MyPlayer" .. math.random(100000),
