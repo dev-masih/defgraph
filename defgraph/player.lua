@@ -440,10 +440,6 @@ function Player:update_config(new_config)
     self._last_dir_x = nil
     self._last_dir_y = nil
     self._last_speed = nil
-
-    if self.map then
-        self.map:invalidate_collision_cache()
-    end
 end
 
 function Player:update_face_vector(face_vector)

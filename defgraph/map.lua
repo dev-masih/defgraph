@@ -72,8 +72,7 @@ function Map.new()
         map_node_list    = {}, -- [node_id] = Node
         map_route_list   = {}, -- [from_id][to_id] = { a,b,c,distance,ab_len2,inv_ab_len } (route info)
         pathfinder_cache = {}, -- [from_id][to_id] = { distance, path[], node_versions[], route_versions[] } (cached path)
-        collision_candidate_cache = {},   -- group -> list of players
-        collision_matrix = {},        -- groupA -> groupB -> boolean
+        collision_matrix = {}, -- groupA -> groupB -> boolean
 
         -- node registry / groups
         node_registry   = {},  -- key -> Node
@@ -115,10 +114,6 @@ Map.debug_draw_groups          = debug.debug_draw_groups
 Map.get_map_state              = get_map_state
 
 -- ==================== Internal Helpers ====================
-
-function Map:invalidate_collision_cache()
-    get_map_state(self).collision_candidate_cache = {}
-end
 
 local function map_update_node_type(map, node_id)
     local state = get_map_state(map)
@@ -330,8 +325,6 @@ function Map:add_collision_rule(group1, group2, bidirectional)
     if bidirectional then
         matrix[group2][group1] = true
     end
-
-    self:invalidate_collision_cache()
 end
 
 function Map:remove_collision_rule(group1, group2, bidirectional)
@@ -345,13 +338,10 @@ function Map:remove_collision_rule(group1, group2, bidirectional)
     if bidirectional and matrix[group2] then
         matrix[group2][group1] = nil
     end
-
-    self:invalidate_collision_cache()
 end
 
 function Map:clear_collision_rules()
     get_map_state(self).collision_matrix = {}
-    self:invalidate_collision_cache()
 end
 
 function Map:debug_print_collision_matrix()
@@ -410,7 +400,6 @@ function Map:remove_player(key)
     end
 
     state.players[key] = nil
-    self:invalidate_collision_cache()
 end
 
 function Map:get_players_in_group(group)
@@ -435,7 +424,6 @@ function Map:remove_players_in_group(group)
     end
 
     state.players_by_group[group] = nil
-    self:invalidate_collision_cache()
 end
 
 function Map:add_player_to_group(key, group)
@@ -449,7 +437,6 @@ function Map:add_player_to_group(key, group)
     state.players_by_group[group][key] = true
     player.groups[group] = true
 
-    self:invalidate_collision_cache()
     return true
 end
 
@@ -469,8 +456,6 @@ function Map:remove_player_from_group(key, group)
             state.players_by_group[group] = nil
         end
     end
-
-    self:invalidate_collision_cache()
 end
 
 function Map:is_player_in_group(key, group)
@@ -996,7 +981,6 @@ function Map:destroy()
     state.pathfinder_cache = {}
     state.node_version = {}
     state.route_version = {}
-    state.collision_candidate_cache = {}
     state.collision_matrix = {}
 
     self._destroyed = true
