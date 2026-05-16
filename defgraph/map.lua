@@ -767,7 +767,6 @@ function Map:normalize_destination_list(list)
         end
     end
 
-    print("DEBUG: normalize_destination_list - #normalized =", #normalized, " | #targets =", #targets)
     return normalized, targets
 end
 
@@ -957,8 +956,6 @@ function Map:create_player(key, groups, initial_position, destination_list, rout
             self:add_player_to_group(key, group)
         end
     end
-
-    print("DEBUG: create_player - #normalized =", #normalized, "| #targets =", #targets)
 
     return self:move_internal_initialize(initial_position, player)
 end

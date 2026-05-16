@@ -247,22 +247,30 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
 
     self_player._debug_density = density
 
-    -- no avoidance
+    -- no lateral avoidance (density / queue slowdown may still apply via slow_factor)
     if strongest_reactive == 0 and strongest_predictive == 0 and strongest_queueing == 0 then
         self_player._debug_avoid_x = 0
         self_player._debug_avoid_y = 0
         self_player._debug_final_x = dir_x
         self_player._debug_final_y = dir_y
 
+        local final_speed = speed * slow_factor
+        if slow_factor < 1 then
+            local ss = preset.speed_smoothing
+            local smooth_speed = self_player._smooth_speed or final_speed
+            smooth_speed = smooth_speed + (final_speed - smooth_speed) * ss
+            final_speed = smooth_speed
+        end
+
         self_player._last_dir_x   = dir_x
         self_player._last_dir_y   = dir_y
-        self_player._last_speed   = speed
+        self_player._last_speed   = final_speed
 
-        self_player._smooth_speed = speed
         self_player._smooth_dir_x = dir_x
         self_player._smooth_dir_y = dir_y
+        self_player._smooth_speed = final_speed
 
-        return dir_x, dir_y, speed
+        return dir_x, dir_y, final_speed
     end
 
     -- combine forces

@@ -76,8 +76,6 @@ function PlayerConfig:validate()
 
     if type(self.collision_behavior) == "table" then
         -- Custom table is allowed - validation happens in get_collision_preset()
-        -- We just ensure it's not nil/empty here
-        assert(next(self.collision_behavior) ~= nil or true, "Custom collision_behavior table cannot be empty (but missing keys will use Balanced defaults)")
     else
         assert(constants.COLLISION_BEHAVIOR_PRESETS[self.collision_behavior],
             "PlayerConfig: Invalid collision_behavior preset. Use constants.CollisionBehavior.Cautious, .Balanced, .Reactive or a custom table.")
@@ -89,6 +87,11 @@ function PlayerConfig:validate()
 
     assert(self.path_curve_tightness >= 0,
         "PlayerConfig: path_curve_tightness must be >= 0")
+
+    if self.path_curve_roundness > 0 then
+        assert(self.path_curve_tightness > 0,
+            "PlayerConfig: path_curve_tightness must be > 0 when path_curve_roundness > 0")
+    end
 
     assert(self.path_curve_roundness >= 0,
         "PlayerConfig: path_curve_roundness must be >= 0")

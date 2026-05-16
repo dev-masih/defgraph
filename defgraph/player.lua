@@ -108,7 +108,7 @@ local function player_update(self_player, speed, compute_collision_list)
     end
 
     -- Path invalidation
-    if path_index > 1 then
+    if path_index >= 1 then
         local ids = self_player.path_node_ids
         if ids and #ids > 0 then
             if map:compute_path_version(ids) ~= self_player.path_version then
@@ -417,6 +417,7 @@ function Player:update_destinations(destination_list, route_type)
     end
 
     self.route_type = route_type
+    self._finished = false
 
     -- Rebuild path
     self = self.map:move_internal_initialize(self.current_position, self)
@@ -459,6 +460,7 @@ function Player:teleport(position)
            "Player:teleport: position must be a vmath.vector3")
 
     self.current_position = vmath.vector3(position.x, position.y, 0)
+    self._finished = false
 
     -- Force path recalculation
     self = self.map:move_internal_initialize(self.current_position, self)

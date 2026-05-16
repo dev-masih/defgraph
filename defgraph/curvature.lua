@@ -223,7 +223,9 @@ local function move_internal_initialize(self, source_position, move_data)
     local path = move_data.path
     for i = 1, #path do path[i] = nil end
 
-    if move_data.config.path_curve_roundness ~= 0 and #position_list > 2 then
+    if move_data.config.path_curve_roundness ~= 0
+        and move_data.config.path_curve_tightness > 0
+        and #position_list > 2 then
         path[1] = position_list[1]
         local path_count = 1
         for i = 2, #position_list - 1 do
