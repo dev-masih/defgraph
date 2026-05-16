@@ -51,6 +51,9 @@ constants.COLLISION_BEHAVIOR_PRESETS = {
         speed_smoothing         = 0.24,
         density_radius_factor   = 2.9,
         density_slow_factor     = 0.48,
+        co_direction_align      = 0.85,
+        convoy_along_epsilon    = 4,
+        queue_side_nudge        = 0,
     },
 
     [constants.CollisionBehavior.Balanced] = {
@@ -69,6 +72,9 @@ constants.COLLISION_BEHAVIOR_PRESETS = {
         speed_smoothing         = 0.28,
         density_radius_factor   = 2.8,
         density_slow_factor     = 0.45,
+        co_direction_align      = 0.82,
+        convoy_along_epsilon    = 4,
+        queue_side_nudge        = 0,
     },
 
     [constants.CollisionBehavior.Reactive] = {
@@ -79,7 +85,7 @@ constants.COLLISION_BEHAVIOR_PRESETS = {
         reactive_scale          = 0.42,
         predictive_slow         = 0.82,
         reactive_slow           = 0.72,
-        queue_spacing_factor    = 1.25,
+        queue_spacing_factor    = 1.5,
         queue_slow              = 0.87,
         path_recentering        = 0.22,
         path_recentering_collision_scale = 0.28,
@@ -87,6 +93,9 @@ constants.COLLISION_BEHAVIOR_PRESETS = {
         speed_smoothing         = 0.22,
         density_radius_factor   = 2.3,
         density_slow_factor     = 0.18,
+        co_direction_align      = 0.80,
+        convoy_along_epsilon    = 4,
+        queue_side_nudge        = 0,
     },
 }
 
@@ -114,6 +123,9 @@ function constants.get_collision_preset(behavior)
         preset.speed_smoothing                  = behavior.speed_smoothing or BALANCED_DEFAULTS.speed_smoothing
         preset.density_radius_factor            = behavior.density_radius_factor or BALANCED_DEFAULTS.density_radius_factor
         preset.density_slow_factor              = behavior.density_slow_factor or BALANCED_DEFAULTS.density_slow_factor
+        preset.co_direction_align               = behavior.co_direction_align or BALANCED_DEFAULTS.co_direction_align
+        preset.convoy_along_epsilon             = behavior.convoy_along_epsilon or BALANCED_DEFAULTS.convoy_along_epsilon
+        preset.queue_side_nudge                  = behavior.queue_side_nudge or BALANCED_DEFAULTS.queue_side_nudge
 
         -- Basic validation for custom table
         assert(type(preset.lookahead_min) == "number" and preset.lookahead_min > 0,

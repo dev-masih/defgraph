@@ -3,6 +3,16 @@
 
 local constants = require("defgraph.constants")
 
+local function lateral_tie_sign(self_player, other, lateral)
+    if lateral ~= 0 then
+        return lateral
+    end
+    if self_player.id < other.id then
+        return 1
+    end
+    return -1
+end
+
 local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed)
     local cfg = self_player.config
     if not cfg.collision_enabled then
@@ -125,102 +135,130 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
         local fdy = future_py - ofy
         local fdist_sq = fdx*fdx + fdy*fdy
 
-        -- 1. Reactive avoidance
-        if dist_sq < radius_sq and dist_sq > 0 then
-            local dist = math.sqrt(dist_sq)
-            local overlap = (radius - dist) * (1 / radius)
-
-            if overlap > strongest_reactive then
-                strongest_reactive = overlap
-            end
-
-            local inv_dist = 1 / dist
-            local rx = dx * inv_dist
-            local ry = dy * inv_dist
-            local lateral = rx * lx + ry * ly
-            if lateral == 0 then
-                lateral = (self_player.id % 2 == 0) and 1 or -1
-            end
-
-            local force = overlap * (radius * preset.reactive_scale)
-            local lat_force = lateral * force
-            avoid_x = avoid_x + lx * lat_force
-            avoid_y = avoid_y + ly * lat_force
-
-            local dot = dx * dir_x + dy * dir_y
-            if dot < 0 then
-                local factor = 1 - overlap * preset.reactive_slow
-                if factor < slow_factor then
-                    slow_factor = factor
-                end
-            end
-        end
-
-        -- 2. Predictive avoidance
-        if fdist_sq < radius_sq and fdist_sq > 0 then
-            local fdist = math.sqrt(fdist_sq)
-            local foverlap = (radius - fdist) * (1 / radius)
-
-            if foverlap > strongest_predictive then
-                strongest_predictive = foverlap
-            end
-
-            local inv_fdist = 1 / fdist
-            local rx = fdx * inv_fdist
-            local ry = fdy * inv_fdist
-            local lateral = rx * lx + ry * ly
-            if lateral == 0 then
-                lateral = (self_player.id % 2 == 0) and 1 or -1
-            end
-
-            local force = foverlap * (radius * preset.predictive_scale)
-            local lat_force = lateral * force
-            avoid_x = avoid_x + lx * lat_force
-            avoid_y = avoid_y + ly * lat_force
-
-            local dot = fdx * dir_x + fdy * dir_y
-            if dot < 0 then
-                local factor = 1 - foverlap * preset.predictive_slow
-                if factor < slow_factor then
-                    slow_factor = factor
-                end
-            end
-        end
-
-        -- 3. Queueing
         local odx2 = other._last_dir_x
+        local in_convoy = false
+
+        -- Convoy mode: co-directional pairs use longitudinal queue only (no lateral orbit)
         if odx2 then
             local ody2 = other._last_dir_y
             local align = dir_x * odx2 + dir_y * ody2
-            if align > 0.7 then
-                local dx2 = ox - px
-                local dy2 = oy - py
-                local dist2_sq = dx2*dx2 + dy2*dy2
+            if align >= preset.co_direction_align then
+                in_convoy = true
+
+                local rel_x = ox - px
+                local rel_y = oy - py
+                local along = rel_x * dir_x + rel_y * dir_y
+                local along_eps = preset.convoy_along_epsilon
 
                 local desired = radius * preset.queue_spacing_factor
                 local desired_sq = desired * desired
+                local dist2_sq = rel_x * rel_x + rel_y * rel_y
 
-                if dist2_sq < desired_sq and dist2_sq > 0 then
+                if along > along_eps and dist2_sq < desired_sq and dist2_sq > 0 then
                     local dist2 = math.sqrt(dist2_sq)
                     local overlap2 = (desired - dist2) / desired
-
-                    if overlap2 > strongest_queueing then
-                        strongest_queueing = overlap2
-                    end
-
                     local factor = 1 - overlap2 * preset.queue_slow
                     if factor < slow_factor then
                         slow_factor = factor
                     end
+                end
+            end
+        end
 
-                    local back_force = overlap2 * (radius * 0.2)
-                    avoid_x = avoid_x - dir_x * back_force
-                    avoid_y = avoid_y - dir_y * back_force
+        if not in_convoy then
+            -- 1. Reactive avoidance
+            if dist_sq < radius_sq and dist_sq > 0 then
+                local dist = math.sqrt(dist_sq)
+                local overlap = (radius - dist) * (1 / radius)
 
-                    local side = (self_player.id % 2 == 0) and 1 or -1
-                    local side_force = overlap2 * 0.1
-                    avoid_x = avoid_x + (-dir_y) * side * side_force
-                    avoid_y = avoid_y + ( dir_x) * side * side_force
+                if overlap > strongest_reactive then
+                    strongest_reactive = overlap
+                end
+
+                local inv_dist = 1 / dist
+                local rx = dx * inv_dist
+                local ry = dy * inv_dist
+                local lateral = lateral_tie_sign(self_player, other, rx * lx + ry * ly)
+
+                local force = overlap * (radius * preset.reactive_scale)
+                local lat_force = lateral * force
+                avoid_x = avoid_x + lx * lat_force
+                avoid_y = avoid_y + ly * lat_force
+
+                local dot = dx * dir_x + dy * dir_y
+                if dot < 0 then
+                    local factor = 1 - overlap * preset.reactive_slow
+                    if factor < slow_factor then
+                        slow_factor = factor
+                    end
+                end
+            end
+
+            -- 2. Predictive avoidance
+            if fdist_sq < radius_sq and fdist_sq > 0 then
+                local fdist = math.sqrt(fdist_sq)
+                local foverlap = (radius - fdist) * (1 / radius)
+
+                if foverlap > strongest_predictive then
+                    strongest_predictive = foverlap
+                end
+
+                local inv_fdist = 1 / fdist
+                local rx = fdx * inv_fdist
+                local ry = fdy * inv_fdist
+                local lateral = lateral_tie_sign(self_player, other, rx * lx + ry * ly)
+
+                local force = foverlap * (radius * preset.predictive_scale)
+                local lat_force = lateral * force
+                avoid_x = avoid_x + lx * lat_force
+                avoid_y = avoid_y + ly * lat_force
+
+                local dot = fdx * dir_x + fdy * dir_y
+                if dot < 0 then
+                    local factor = 1 - foverlap * preset.predictive_slow
+                    if factor < slow_factor then
+                        slow_factor = factor
+                    end
+                end
+            end
+
+            -- 3. Queueing (crossing / moderate alignment)
+            if odx2 then
+                local ody2 = other._last_dir_y
+                local align = dir_x * odx2 + dir_y * ody2
+                if align > 0.7 then
+                    local dx2 = ox - px
+                    local dy2 = oy - py
+                    local dist2_sq = dx2 * dx2 + dy2 * dy2
+
+                    local desired = radius * preset.queue_spacing_factor
+                    local desired_sq = desired * desired
+
+                    if dist2_sq < desired_sq and dist2_sq > 0 then
+                        local dist2 = math.sqrt(dist2_sq)
+                        local overlap2 = (desired - dist2) / desired
+
+                        if overlap2 > strongest_queueing then
+                            strongest_queueing = overlap2
+                        end
+
+                        local factor = 1 - overlap2 * preset.queue_slow
+                        if factor < slow_factor then
+                            slow_factor = factor
+                        end
+
+                        local back_force = overlap2 * (radius * 0.2)
+                        avoid_x = avoid_x - dir_x * back_force
+                        avoid_y = avoid_y - dir_y * back_force
+
+                        local side_nudge = preset.queue_side_nudge or 0
+                        if side_nudge > 0 then
+                            local side = lateral_tie_sign(self_player, other, 0)
+                            local side_force = overlap2 * side_nudge
+                            avoid_x = avoid_x + (-dir_y) * side * side_force
+                            avoid_y = avoid_y + ( dir_x) * side * side_force
+                        end
+                    end
                 end
             end
         end
@@ -247,8 +285,9 @@ local function compute_collision_avoidance(map, self_player, dir_x, dir_y, speed
 
     self_player._debug_density = density
 
-    -- no lateral avoidance (density / queue slowdown may still apply via slow_factor)
-    if strongest_reactive == 0 and strongest_predictive == 0 and strongest_queueing == 0 then
+    -- no lateral avoidance (convoy slowdown / density may still apply via slow_factor)
+    local avoid_len_sq = avoid_x * avoid_x + avoid_y * avoid_y
+    if strongest_reactive == 0 and strongest_predictive == 0 and avoid_len_sq < 0.0001 then
         self_player._debug_avoid_x = 0
         self_player._debug_avoid_y = 0
         self_player._debug_final_x = dir_x
